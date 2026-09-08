@@ -1,0 +1,46 @@
+# 密钥与本地环境
+.env
+.env.local
+.env.*.local
+*.pem
+
+# 本地隐私目录（不入库）
+private/
+private.zip
+
+# 根目录误放的个人材料
+Agent Harness 运行工作台*/
+Agent 全方位调研报告/
+企业中台文档面试/
+*简历*.md
+简历*.md
+面试.md
+*.pdf
+
+# Java / Maven
+backend/target/
+backend/data/
+backend/reports/
+reports/
+data/
+*.class
+*.jar
+*.war
+*.iml
+
+# Node / 前端
+web/node_modules/
+web/dist/
+web/.vite/
+
+# IDE / 系统
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+*.log
+tmp/
+backend/.env
+
+# 本地一键启动运行态
+.run/

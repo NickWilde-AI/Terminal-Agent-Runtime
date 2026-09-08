@@ -1,0 +1,5 @@
+device-agent:
+  persistence: memory
+  sqlite-path: ./data/test-harness.db
+  model:
+    mode: fake

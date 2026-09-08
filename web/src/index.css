@@ -1,0 +1,205 @@
+:root {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --ink: #1c2430;
+  --muted: #5b6675;
+  --line: #d5cbb8;
+  --panel: #fffdf8;
+  --accent: #0f6a5a;
+  --warn: #9a4d1c;
+  --danger: #8f2f2f;
+  --ok: #1f6b3a;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  --sans: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Segoe UI", sans-serif;
+  font-family: var(--sans);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(15, 106, 90, 0.08), transparent 40%),
+    linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+button, textarea, input, select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.danger {
+  background: #fff5f3;
+  border-color: #e2b4b0;
+  color: var(--danger);
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.app {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.45rem;
+  letter-spacing: 0.01em;
+}
+.badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-right: 0.35rem;
+}
+.badge.warn { color: var(--warn); border-color: #e2c19a; background: #fff7ea; }
+.grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 1rem;
+}
+.hero-grid {
+  grid-template-columns: 1.35fr 0.9fr;
+  grid-template-areas:
+    "vehicle task"
+    "memory task";
+}
+.vehicle-panel { grid-area: vehicle; }
+.memory-panel { grid-area: memory; }
+.hero-grid > .panel:nth-child(2) { grid-area: task; }
+@media (max-width: 1100px) {
+  .grid, .hero-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "vehicle"
+      "task"
+      "memory";
+  }
+}
+.vehicle-canvas {
+  width: 100%;
+  height: min(52vh, 480px);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #e9eef2;
+}
+.vehicle-hud,
+.vehicle-screen,
+.vehicle-hud-chip {
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid #d5cbb8;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  color: #1c2430;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.vehicle-screen {
+  min-width: 160px;
+  white-space: normal;
+  line-height: 1.35;
+}
+.vehicle-screen-title {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+}
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0.9rem;
+}
+.examples button { font-size: 0.82rem; }
+textarea {
+  width: 100%;
+  min-height: 96px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  padding: 0.75rem;
+  resize: vertical;
+  background: #fff;
+}
+.row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.kv {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: #fff;
+}
+.card .label { color: var(--muted); font-size: 0.8rem; }
+.card .value { font-family: var(--mono); font-size: 1.05rem; margin-top: 0.2rem; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+.status-ok { color: var(--ok); }
+.status-bad { color: var(--danger); }
+.status-warn { color: var(--warn); }
+.fold {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 0.85rem 1rem;
+}
+.fold summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.event {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  border-top: 1px dashed var(--line);
+  padding: 0.45rem 0;
+}
+.pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  background: #f7f3ea;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+.error {
+  color: var(--danger);
+  margin-top: 0.5rem;
+}

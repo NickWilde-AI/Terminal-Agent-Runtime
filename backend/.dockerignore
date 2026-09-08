@@ -1,0 +1,9 @@
+data/
+reports/
+.env
+*.iml
+.idea/
+.DS_Store
+src/
+pom.xml
+!target/terminal-agent-runtime-*.jar

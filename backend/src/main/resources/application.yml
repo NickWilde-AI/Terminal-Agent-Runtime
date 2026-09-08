@@ -1,0 +1,36 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: terminal-agent-runtime
+
+device-agent:
+  defaults-rule-id: demo-defaults-v1
+  fresh-window-ms: 2000
+  # 本地一键启动时指向构建好的工作台；Docker 镜像内可不设（由 nginx 托管）
+  web-dist: ${DEVICE_AGENT_WEB_DIST:}
+  budget:
+    absolute-deadline-seconds: 120
+    max-model-calls: 12
+    max-tool-calls: 24
+    max-write-actions: 6
+    max-replans: 2
+    max-same-failure: 2
+  model:
+    # 默认走阶跃 Step OpenAI-compatible；单测用 application-test / fake
+    mode: ${DEVICE_AGENT_MODEL_MODE:openai_compatible}
+    base-url: ${DEVICE_AGENT_MODEL_BASE_URL:https://api.stepfun.com/v1}
+    api-key: ${DEVICE_AGENT_MODEL_API_KEY:}
+    model-id: ${DEVICE_AGENT_MODEL_ID:step-3.5-flash}
+    edge-model-id: ${DEVICE_AGENT_MODEL_EDGE_ID:step-edge-stub}
+    placement: ${DEVICE_AGENT_MODEL_PLACEMENT:cloud}
+    timeout-ms: 60000
+  event-log-dir: ${DEVICE_AGENT_EVENT_LOG_DIR:./data/events}
+  require-confirmation: ${DEVICE_AGENT_REQUIRE_CONFIRMATION:false}
+  persistence: ${DEVICE_AGENT_PERSISTENCE:sqlite}
+  sqlite-path: ${DEVICE_AGENT_SQLITE_PATH:./data/harness.db}
+
+logging:
+  level:
+    com.deviceagent: INFO

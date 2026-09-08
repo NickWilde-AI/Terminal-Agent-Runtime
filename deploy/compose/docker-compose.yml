@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      DEVICE_AGENT_EVENT_LOG_DIR: /app/data/events
+      DEVICE_AGENT_SQLITE_PATH: /app/data/harness.db
+      DEVICE_AGENT_PERSISTENCE: sqlite
+    volumes:
+      - harness-data:/app/data
+      - harness-reports:/app/reports
+    expose:
+      - "8080"
+  web:
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  harness-data:
+  harness-reports:
