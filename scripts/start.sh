@@ -109,7 +109,7 @@ print_ready() {
   echo
   echo "已启动（${how}）→ http://localhost:8080"
   echo "状态 → ./start.sh --status"
-  echo "停止 → ./stop.sh"
+  echo "停止 → ./start.sh --stop"
 }
 
 build_artifacts() {

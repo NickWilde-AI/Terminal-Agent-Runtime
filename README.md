@@ -50,24 +50,28 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 用户目标
    │
    ▼
- 路由 ──信息不足──▶ 澄清
+主 Agent 路由
    │
-   ├──越权 / 不可做──▶ 拒绝
-   │
-   ├──明确指令──▶ FAST ──────────────┐
-   │                                 ▼
-   └──复杂目标──▶ AGENT 循环 ──▶ Policy / 确认
-                      ▲               │
-                      │               ▼
-                 用户介入 / 取消  Capability 执行
-                      ▲               │
-                      │               ▼
-                      └──未满足── 写后回读与三维证据
+   ├──信息不足──▶ CLARIFY（追问）
+   ├──越权/不可做──▶ REJECT
+   ├──明确指令──▶ FAST（主 Agent 单次理解 → DIRECT_ACTION）──┐
+   │                                                         ▼
+   └──复杂目标──▶ 执行规划 Agent（PlanDraft）                 Policy / 确认
+                      │                                      │
+                      ▼                                      ▼
+                 审核 Agent（PASS/REVISE/REJECT）──▶ Capability / 工具执行
+                      ▲                                      │
+                      │ REVISE                               ▼
+                      └────────────── 写后回读与三维证据 ◀─────┘
+                                      │
+                                未满足则有界续跑 / 用户介入·取消
                                       │
                                     满足
                                       ▼
                                可验收终态 ──▶ Trace + Eval
 ```
+
+> 首图直接体现：**主 Agent → 执行规划 Agent → 审核 Agent**；FAST 跳过规划与审核，不是「不调模型」。
 
 **智能终端标杆任务：**
 
@@ -112,7 +116,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | **设备模拟器** | 本地真值状态、延迟、故障注入、外部扰动；导航 POI 搜索失败诚实；生活服务仅会话占位 |
 | **3D 工作台** | React Three Fiber 程序化车辆；车窗/空调气流/媒体频谱/导航路线只绑定 Simulator Snapshot |
 | **可观测** | Run 事件流（SSE）、只读回放、Trace 落盘；工作台实时展示 |
-| **评测** | Fake 业务种子 **54** 例（含 **N01–N12** 出行导航与 **I01–I02** IoT 灯控）；`agent` / `baseline` 对照；门禁关注 `false_success=0`；断言独立于 Planner |
+| **评测** | Fake 业务种子 **54** 例（含 **N01–N12** 出行导航与 **IOT01–IOT02** IoT 灯控）；`agent` / `baseline` 对照；门禁关注 `false_success=0`；断言独立于 Planner |
 | **工作台** | 任务、设备、介入、记忆、故障、回放、评测一站式 |
 | **持久化** | SQLite 任务 / 事件；支持重启后的恢复路径 |
 | **一键部署** | `./start.sh`：默认 Docker Compose；`--local` 可切本地单进程；工作台 + API 同端口 |
@@ -249,7 +253,7 @@ cp .env.example .env
 
 ```bash
 ./start.sh --status              # 查看是否可用
-./stop.sh                        # 停止 Docker / 本地进程
+./start.sh --stop                # 停止 Docker / 本地进程
 ./scripts/smoke_api.sh           # API 冒烟
 FORCE_REBUILD=1 ./start.sh       # 强制重建
 ./start.sh --local               # 本地进程模式
@@ -444,6 +448,8 @@ cd backend && mvn test
 - `agent`：按真实闭环一步步做完再验收  
 - `baseline`：先编译再一次性展开，用来对照「有没有状态反馈循环」带来的差异  
 
+**对照读报告时注意：** `backend/reports/last-agent.json` 与 `last-baseline.json` 必须同一 `EvalCatalog` 版本才可横比通过率。当前 Fake 下 Agent 追求高通过且 `false_success=0`；Baseline 作为「无状态反馈循环」对照，通过率更低、允许出现 `false_success`，**不能**用 Baseline 通过率否定 Agent 门禁。若两份报告 `total` 不一致，先重跑两种模式再对照。
+
 详见 [docs/evaluation.md](./docs/evaluation.md)。能力清单见 [docs/capabilities.md](./docs/capabilities.md)（`capabilities-v4`）。扩展新域见 [docs/extending.md](./docs/extending.md)。
 
 ---
@@ -455,10 +461,9 @@ cd backend && mvn test
 ├── README.md                 # 对外主文档（本文件）
 ├── LICENSE                   # Apache-2.0
 ├── .env.example              # 环境变量模板
-├── start.sh / stop.sh        # 一键启动 / 停止
+├── start.sh                  # 一键启动（停止：./start.sh --stop）
 ├── scripts/
 │   ├── start.sh              # Docker / 本地统一入口
-│   ├── stop.sh
 │   ├── smoke_api.sh
 │   ├── run_backend.sh        # 贡献者热开发（可选）
 │   └── run_web.sh
