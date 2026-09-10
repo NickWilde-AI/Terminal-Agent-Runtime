@@ -77,6 +77,9 @@ public class TaskBinder {
             case "nav_volume" -> Ids.dict("capability_id","navigation.set_volume","params",Ids.dict("value",g.get("value")));
             case "nav_muted" -> Ids.dict("capability_id","navigation.set_muted","params",Ids.dict("value",g.get("value")));
             case "life_search_shops" -> Ids.dict("capability_id","life.search_shops","params",Ids.dict("keyword",g.get("keyword")));
+            case "life_enter_shop" -> Ids.dict("capability_id","life.enter_shop","params",Ids.dict("shop_name",g.get("shop_name")));
+            case "life_add_to_cart" -> Ids.dict("capability_id","life.add_to_cart","params",Ids.dict("item",g.get("item")));
+            case "life_go_to_checkout" -> Ids.dict("capability_id","life.go_to_checkout","params",Map.of());
             case "life_close" -> Ids.dict("capability_id","life.close","params",Map.of());
             default -> null;
         };

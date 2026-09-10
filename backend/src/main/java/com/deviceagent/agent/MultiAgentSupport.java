@@ -193,6 +193,18 @@ public final class MultiAgentSupport {
                 else draft.assumptions.add(type + " already satisfied");
             } else if ("nav_diagnostic".equals(type) || "media_keep_muted".equals(type)) {
                 draft.assumptions.add("观察类目标：" + type + "，不产生写动作");
+            } else if ("life_search_shops".equals(type)) {
+                action = act("life.search_shops", Map.of("keyword", String.valueOf(goal.getOrDefault("keyword", "美食"))), "生活服务搜店");
+            } else if ("life_enter_shop".equals(type)) {
+                action = act("life.enter_shop", Map.of("shop_name", String.valueOf(goal.get("shop_name"))), "生活服务进店");
+            } else if ("life_add_to_cart".equals(type)) {
+                action = act("life.add_to_cart", Map.of("item", String.valueOf(goal.get("item"))), "生活服务加购");
+            } else if ("life_go_to_checkout".equals(type)) {
+                action = act("life.go_to_checkout", Map.of(), "生活服务去结算");
+            } else if ("life_close".equals(type)) {
+                if (Boolean.TRUE.equals(state.get("life_session_active"))) {
+                    action = act("life.close", Map.of(), "关闭外卖会话");
+                } else draft.assumptions.add(type + " already satisfied");
             }
             if (action != null) {
                 action = ModelOutputNormalizer.normalizeAction(action);

@@ -314,6 +314,74 @@ public final class GoalCompiler {
                 ensureCoverage(c, intents);
                 return c;
             }
+            if (intents.contains("life_search_shops")) {
+                String keyword = extractLifeKeyword(text);
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "life_search_shops");
+                goal.put("keyword", keyword == null ? "美食" : keyword);
+                goal.put("source", "user");
+                c.goals.add(goal);
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "life.search_shops",
+                        "params", Map.of("keyword", keyword == null ? "美食" : keyword));
+                c.summary = "生活服务搜店：" + (keyword == null ? "美食" : keyword);
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("life_enter_shop")) {
+                String shop = extractLifeShop(text);
+                if (shop == null) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "请说明要进入哪家店";
+                    c.summary = "进店对象不明";
+                    return c;
+                }
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "life_enter_shop");
+                goal.put("shop_name", shop);
+                goal.put("source", "user");
+                c.goals.add(goal);
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "life.enter_shop", "params", Map.of("shop_name", shop));
+                c.summary = "进入店铺 " + shop;
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("life_add_to_cart")) {
+                String item = extractLifeItem(text);
+                if (item == null) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "请说明要加购什么";
+                    c.summary = "加购对象不明";
+                    return c;
+                }
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "life_add_to_cart");
+                goal.put("item", item);
+                goal.put("source", "user");
+                c.goals.add(goal);
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "life.add_to_cart", "params", Map.of("item", item));
+                c.summary = "加购 " + item;
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("life_go_to_checkout")) {
+                addGoal(c, "life_go_to_checkout", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "life.go_to_checkout", "params", Map.of());
+                c.summary = "去结算";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("life_close")) {
+                addGoal(c, "life_close", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "life.close", "params", Map.of());
+                c.summary = "关闭外卖会话";
+                ensureCoverage(c, intents);
+                return c;
+            }
         }
 
         if (complex || intents.size() > 1 || text.contains("休息") || text.contains("舒服")
@@ -473,8 +541,54 @@ public final class GoalCompiler {
         if (intents.contains("nav_stop")) {
             addGoal(c, "nav_stop", true, "user");
         }
+        if (intents.contains("nav_pause")) {
+            addGoal(c, "nav_pause", true, "user");
+        }
+        if (intents.contains("nav_resume")) {
+            addGoal(c, "nav_resume", true, "user");
+        }
         if (intents.contains("nav_query_eta")) {
             addGoal(c, "nav_query_eta", true, "user");
+        }
+        if (intents.contains("nav_query_status")) {
+            addGoal(c, "nav_query_status", true, "user");
+        }
+        if (intents.contains("nav_query_waypoints")) {
+            addGoal(c, "nav_query_waypoints", true, "user");
+        }
+        if (intents.contains("life_search_shops")) {
+            String keyword = extractLifeKeyword(text);
+            Map<String, Object> goal = new LinkedHashMap<>();
+            goal.put("type", "life_search_shops");
+            goal.put("keyword", keyword == null ? "美食" : keyword);
+            goal.put("source", "user");
+            c.goals.add(goal);
+        }
+        if (intents.contains("life_enter_shop")) {
+            String shop = extractLifeShop(text);
+            if (shop != null) {
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "life_enter_shop");
+                goal.put("shop_name", shop);
+                goal.put("source", "user");
+                c.goals.add(goal);
+            }
+        }
+        if (intents.contains("life_add_to_cart")) {
+            String item = extractLifeItem(text);
+            if (item != null) {
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "life_add_to_cart");
+                goal.put("item", item);
+                goal.put("source", "user");
+                c.goals.add(goal);
+            }
+        }
+        if (intents.contains("life_go_to_checkout")) {
+            addGoal(c, "life_go_to_checkout", true, "user");
+        }
+        if (intents.contains("life_close")) {
+            addGoal(c, "life_close", true, "user");
         }
         if (keepNav) {
             c.criteria.add(criterion("nav_prompt_retained", Map.of(
@@ -530,6 +644,11 @@ public final class GoalCompiler {
                 case "nav_query_waypoints" -> covered.add("nav_query_waypoints");
                 case "nav_prompt_enabled" -> covered.add("nav_prompt");
                 case "nav_volume", "nav_muted" -> covered.add("nav_diag");
+                case "life_search_shops" -> covered.add("life_search_shops");
+                case "life_enter_shop" -> covered.add("life_enter_shop");
+                case "life_add_to_cart" -> covered.add("life_add_to_cart");
+                case "life_go_to_checkout" -> covered.add("life_go_to_checkout");
+                case "life_close" -> covered.add("life_close");
                 default -> {}
             }
         }
@@ -614,8 +733,9 @@ public final class GoalCompiler {
 
         if (!goHome && !goCompany
                 && !t.contains("还有多久") && !t.contains("多久到") && !t.contains("预计到达")
+                && !isLifeCheckoutPhrase(t)
                 && (t.contains("导航到") || t.contains("导航去")
-                || extractDestination(t) != null
+                || (extractDestination(t) != null && !isLifeOnlyPhrase(t))
                 || (t.contains("导航") && t.contains("机场")))) {
             intents.add("nav_start");
         }
@@ -645,6 +765,27 @@ public final class GoalCompiler {
         }
         if (t.contains("开启导航播报") || t.contains("打开导航播报")) intents.add("nav_prompt");
         if (t.contains("没有声音") || t.contains("无声")) intents.add("nav_diag");
+
+        // 生活服务：仅显式点单/外卖意图；「顺路咖啡」走导航途经，不进 life
+        boolean explicitLife = t.contains("点外卖") || t.contains("外卖") || t.contains("美团") || t.contains("饿了么")
+                || t.contains("搜店") || t.contains("点个外卖") || t.contains("叫外卖");
+        boolean checkout = t.contains("去结算") || t.equals("结算") || t.contains("去结账") || t.contains("去买单");
+        boolean closeLife = t.contains("关闭外卖") || t.contains("退出外卖") || t.contains("结束外卖") || t.contains("关掉外卖");
+        if (explicitLife && !multiPointSignal) {
+            intents.add("life_search_shops");
+        }
+        if (t.contains("进店") || t.contains("进入店铺")) {
+            intents.add("life_enter_shop");
+        }
+        if (t.contains("加购") || (t.contains("加点") && explicitLife)) {
+            intents.add("life_add_to_cart");
+        }
+        if (checkout) {
+            intents.add("life_go_to_checkout");
+        }
+        if (closeLife) {
+            intents.add("life_close");
+        }
         return intents;
     }
 
@@ -721,6 +862,7 @@ public final class GoalCompiler {
 
     private static String extractDestination(String text) {
         if (text == null) return null;
+        if (isLifeCheckoutPhrase(text) || isLifeOnlyPhrase(text)) return null;
         // strip waypoint clause before parsing destination
         String cleaned = text.replaceAll("(?:途经|顺便|顺路)(?:一个|家|去)?[\\u4e00-\\u9fa5A-Za-z0-9]{0,40}", " ");
         Matcher m = NAV_TO.matcher(cleaned);
@@ -730,6 +872,7 @@ public final class GoalCompiler {
                     .replaceAll("(?:途经|顺便|顺路).*$", "")
                     .trim();
             if (dest.equals("家") || dest.equals("公司") || dest.isBlank()) return null;
+            if (isBlockedNavDestination(dest)) return null;
             return dest;
         }
         if (cleaned.contains("虹桥机场")) return "虹桥机场";
@@ -739,6 +882,56 @@ public final class GoalCompiler {
         if (cleaned.contains("固安")) return "固安";
         if (cleaned.contains("加油站")) return "加油站";
         if (cleaned.contains("星巴克")) return "星巴克";
+        return null;
+    }
+
+    private static boolean isLifeCheckoutPhrase(String text) {
+        if (text == null) return false;
+        return text.contains("去结算") || text.contains("去结账") || text.contains("去买单")
+                || text.trim().equals("结算") || text.trim().equals("结账");
+    }
+
+    /** 纯生活服务短句，禁止被「去X」误收成导航目的地。 */
+    private static boolean isLifeOnlyPhrase(String text) {
+        if (text == null) return false;
+        String t = text.trim();
+        return t.contains("点外卖") || t.contains("叫外卖") || t.contains("美团") || t.contains("饿了么")
+                || t.contains("关闭外卖") || t.contains("退出外卖") || t.contains("搜店")
+                || t.equals("结算") || t.equals("结账");
+    }
+
+    private static boolean isBlockedNavDestination(String dest) {
+        if (dest == null) return true;
+        return dest.equals("结算") || dest.equals("结账") || dest.equals("买单")
+                || dest.equals("外卖") || dest.equals("美团") || dest.equals("饿了么");
+    }
+
+    private static String extractLifeKeyword(String text) {
+        if (text == null) return null;
+        if (text.contains("咖啡")) return "咖啡";
+        if (text.contains("奶茶")) return "奶茶";
+        if (text.contains("火锅")) return "火锅";
+        if (text.contains("烧烤")) return "烧烤";
+        Matcher m = Pattern.compile("(?:搜店|点外卖|叫外卖|找)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{1,20})").matcher(text);
+        if (m.find()) {
+            String k = m.group(1).trim();
+            if (!k.equals("外卖") && !k.equals("美团")) return k;
+        }
+        return null;
+    }
+
+    private static String extractLifeShop(String text) {
+        if (text == null) return null;
+        Matcher m = Pattern.compile("(?:进店|进入)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})").matcher(text);
+        if (m.find()) return m.group(1).trim();
+        if (text.contains("星巴克")) return "星巴克";
+        return null;
+    }
+
+    private static String extractLifeItem(String text) {
+        if (text == null) return null;
+        Matcher m = Pattern.compile("(?:加购|加点)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{1,40})").matcher(text);
+        if (m.find()) return m.group(1).trim();
         return null;
     }
 

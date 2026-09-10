@@ -110,4 +110,47 @@ class NavigationCapabilityTest {
         CompiledTaskCandidate c = GoalCompiler.compile("加个途经点星巴克", snap, List.of());
         assertEquals("CLARIFY", c.routeHint);
     }
+
+    @Test
+    void checkoutIsLifeNotNavigation() {
+        CompiledTaskCandidate c = GoalCompiler.compile("去结算", null, List.of());
+        assertEquals("FAST", c.routeHint);
+        assertEquals("life.go_to_checkout", c.fastAction.get("capability_id"));
+        assertFalse(c.goals.stream().anyMatch(g -> "nav_start".equals(g.get("type"))));
+    }
+
+    @Test
+    void explicitFoodOrderEntersLifeSession() {
+        CompiledTaskCandidate c = GoalCompiler.compile("点外卖咖啡", null, List.of());
+        assertEquals("FAST", c.routeHint);
+        assertEquals("life.search_shops", c.fastAction.get("capability_id"));
+        assertEquals("咖啡", ((Map<?, ?>) c.fastAction.get("params")).get("keyword"));
+    }
+
+    @Test
+    void roadsideCoffeePrefersNavWaypointNotLife() {
+        var snap = new com.deviceagent.domain.StateSnapshot();
+        java.util.Map<String, Object> state = new java.util.LinkedHashMap<>();
+        state.put("navigation_active", true);
+        state.put("navigation_destination", "东方明珠");
+        snap.setState(state);
+        CompiledTaskCandidate c = GoalCompiler.compile("顺路咖啡", snap, List.of());
+        assertEquals("FAST", c.routeHint);
+        assertEquals("navigation.add_waypoint", c.fastAction.get("capability_id"));
+        assertFalse(c.goals.stream().anyMatch(g -> String.valueOf(g.get("type")).startsWith("life_")));
+    }
+
+    @Test
+    void navigationStartInterruptsLifeSession() {
+        var sim = new DeviceSimulator();
+        sim.applyWrite("a1", "k1", "life.search_shops", Map.of("keyword", "咖啡"),
+                sim.getEnvironmentId(), null, Map.of());
+        assertEquals(true, sim.readState(null).getState().get("life_session_active"));
+        sim.applyWrite("a2", "k2", "navigation.start", Map.of("destination", "东方明珠"),
+                sim.getEnvironmentId(), null, Map.of());
+        var state = sim.readState(null).getState();
+        assertEquals(true, state.get("navigation_active"));
+        assertEquals(false, state.get("life_session_active"));
+        assertEquals("idle", state.get("life_phase"));
+    }
 }

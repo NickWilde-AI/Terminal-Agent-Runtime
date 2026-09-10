@@ -185,6 +185,7 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
                 updates.put("route_points",List.of(List.of(-2,0),List.of(-1,1),List.of(1,1),List.of(2,2)));
                 updates.put("navigation_eta_minutes",etaMinutes(0));
                 clearNavQuery(updates);
+                closeLifeSession(updates); // 明确开航打断外卖会话
             }
             case "navigation.stop","navigation.exit","navigation.nav_exit" -> {
                 updates.put("navigation_active",false);
@@ -224,6 +225,7 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
                 updates.put("route_points",List.of(List.of(-2,0),List.of(0,1),List.of(2,2)));
                 updates.put("navigation_eta_minutes",etaMinutes(0));
                 clearNavQuery(updates);
+                closeLifeSession(updates);
             }
             case "navigation.navigate_company" -> {
                 Object company=state.get("navigation_company");
@@ -234,6 +236,7 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
                 updates.put("route_points",List.of(List.of(-1,0),List.of(1,1),List.of(2,0)));
                 updates.put("navigation_eta_minutes",etaMinutes(0));
                 clearNavQuery(updates);
+                closeLifeSession(updates);
             }
             case "navigation.query_eta" -> {
                 boolean active=Boolean.TRUE.equals(state.get("navigation_active"));
@@ -295,6 +298,15 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
     private void clearNavQuery(Map<String,Object> updates){
         updates.put("last_nav_query_type",null);
         updates.put("last_nav_query_result",null);
+    }
+
+    /** 导航开航抢域：关闭生活服务会话，不宣称完成点单。 */
+    private void closeLifeSession(Map<String,Object> updates){
+        updates.put("life_session_active",false);
+        updates.put("life_phase","idle");
+        updates.put("life_last_keyword",null);
+        updates.put("life_last_shop",null);
+        updates.put("life_last_item",null);
     }
 
     @SuppressWarnings("unchecked")
