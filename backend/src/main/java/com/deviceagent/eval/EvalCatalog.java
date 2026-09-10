@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** 40 seed cases — answers stay in eval layer, never fed to Planner. */
+/** Fake business seeds — answers stay in eval layer, never fed to Planner. */
 public final class EvalCatalog {
     private EvalCatalog() {}
 
@@ -214,6 +214,10 @@ public final class EvalCatalog {
         list.add(q("N12", "结束导航", "FAST", true,
                 Map.of("navigation_active", true, "navigation_destination", "东方明珠"),
                 Map.of("navigation_active", false), "navigation.stop"));
+
+        // I01-I02：第二域 IoT 灯控样例（证明 DomainModule 可插拔）
+        list.add(q("I01", "打开灯", "FAST", true, Map.of("light_power", false), Map.of("light_power", true), "iot.light.set_power"));
+        list.add(q("I02", "关灯", "FAST", true, Map.of("light_power", true), Map.of("light_power", false), "iot.light.set_power"));
 
         return list;
     }

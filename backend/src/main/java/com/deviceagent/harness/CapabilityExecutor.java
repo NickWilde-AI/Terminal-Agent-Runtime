@@ -3,9 +3,9 @@ import com.deviceagent.capability.*;
 import com.deviceagent.config.DeviceAgentProperties;
 import com.deviceagent.domain.*;
 import com.deviceagent.policy.PolicyEngine;
+import com.deviceagent.device.ActionRecord;
 import com.deviceagent.device.DeviceException;
 import com.deviceagent.device.DevicePort;
-import com.deviceagent.simulator.DeviceSimulator;
 import com.deviceagent.store.InMemoryRunStore;
 import org.springframework.stereotype.Component;
 import java.time.Instant;
@@ -67,7 +67,7 @@ public class CapabilityExecutor {
         return a;
     }
     private ToolAction reject(RunRecord r,ToolAction a,ExecutionStatus status,String reason){a.setExecutionStatus(status);a.setMessage(reason);a.setFinishedAt(Ids.now());store.appendEvent(r,"ACTION_REJECTED",Ids.dict("action_id",a.getActionId(),"execution_status",status.name(),"message",reason));return a;}
-    private void record(RunRecord r,ToolAction a,DeviceSimulator.ActionRecord rec){
+    private void record(RunRecord r,ToolAction a,ActionRecord rec){
         a.setExecutionStatus("APPLIED".equals(rec.status)?ExecutionStatus.APPLIED:"NOT_APPLIED".equals(rec.status)?ExecutionStatus.NOT_APPLIED:ExecutionStatus.UNKNOWN);
         a.setMessage(rec.message);a.setFinishedAt(rec.finishedAt);a.getEvidence().put("device_revision",rec.revision);
         if("APPLIED".equals(rec.status)&&Objects.equals(rec.actionId,a.getActionId()))a.setAttribution(Attribution.THIS_ACTION);

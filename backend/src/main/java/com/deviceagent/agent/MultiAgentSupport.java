@@ -205,6 +205,11 @@ public final class MultiAgentSupport {
                 if (Boolean.TRUE.equals(state.get("life_session_active"))) {
                     action = act("life.close", Map.of(), "关闭外卖会话");
                 } else draft.assumptions.add(type + " already satisfied");
+            } else if ("light_power".equals(type)) {
+                boolean target = Boolean.TRUE.equals(goal.get("value"));
+                if (!Objects.equals(Boolean.TRUE.equals(state.get("light_power")), target)) {
+                    action = act("iot.light.set_power", Map.of("value", target), "智能灯开关");
+                } else draft.assumptions.add(type + " already satisfied");
             }
             if (action != null) {
                 action = ModelOutputNormalizer.normalizeAction(action);

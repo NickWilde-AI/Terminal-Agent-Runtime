@@ -1,87 +1,68 @@
 package com.deviceagent.capability;
 
 import org.springframework.stereotype.Component;
-import java.util.*;
 
-/** The registered schema is shared by Tool Calling, Policy and the simulator. */
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Shared capability schema for Tool Calling, Policy and DevicePort adapters.
+ * Domains register through {@link DomainModule}; Harness/Agent do not hardcode domain packs.
+ */
 @Component
 public class CapabilityRegistry {
-    public static final String VERSION = "capabilities-v3";
-    public static final List<String> WINDOWS = List.of("front_left", "front_right", "rear_left", "rear_right");
-    public static final List<String> ROUTE_PREFERENCES = List.of(
-            "fastest", "shortest", "avoid_highway", "avoid_congestion", "less_toll", "less_detour");
+    public static final String VERSION = "capabilities-v4";
+    /** @deprecated use {@link TerminalDomainModule#WINDOWS} */
+    public static final List<String> WINDOWS = TerminalDomainModule.WINDOWS;
+    /** @deprecated use {@link TerminalDomainModule#ROUTE_PREFERENCES} */
+    public static final List<String> ROUTE_PREFERENCES = TerminalDomainModule.ROUTE_PREFERENCES;
 
     private final Map<String, CapabilityDefinition> capabilities = new LinkedHashMap<>();
+    private final List<String> moduleIds = new ArrayList<>();
 
     public CapabilityRegistry() {
-        add("device.get_state", "读取设备当前状态", false, "CABIN", Map.of());
-
-        add("climate.set_power", "设置空调电源，不改变舱温", true, "CABIN", Map.of("value", bool()));
-        add("climate.set_temperature", "设置整舱设定温度16至30℃，不代表当前舱温", true, "CABIN", Map.of("value", integer(16, 30)));
-        add("climate.set_fan", "设置整舱风量1至3档", true, "CABIN", Map.of("value", integer(1, 3)));
-        add("window.set_position", "车窗开度0关闭、100全开", true, "CABIN", Map.of(
-                "window", Map.of("type", "string", "enum", List.of("front_left", "front_right", "rear_left", "rear_right", "all")),
-                "position", integer(0, 100)));
-
-        add("media.play", "播放占位媒体元数据，不输出真实音频", true, "MEDIA", Map.of("artist", str(80)));
-        add("media.pause", "暂停媒体", true, "MEDIA", Map.of());
-        add("media.set_volume", "媒体音量0至10，不改变导航音量或静音", true, "MEDIA", Map.of("value", integer(0, 10)));
-
-        // 出行导航：可信执行（对齐场景化导航原则；search 失败不假成功）
-        add("navigation.start", "发起导航开航：明确目的地直接开航；search 无候选则诚实失败", true, "NAVIGATION", Map.of("destination", str(120)));
-        add("navigation.stop", "结束/退出当前导航", true, "NAVIGATION", Map.of());
-        add("navigation.pause", "暂停当前导航指引", true, "NAVIGATION", Map.of());
-        add("navigation.resume", "继续已暂停的导航", true, "NAVIGATION", Map.of());
-        add("navigation.add_waypoint", "追加途经点；必须已有终点，不得把途经当新终点", true, "NAVIGATION", Map.of("name", str(120)));
-        add("navigation.remove_waypoint", "删除指定途经点并重规划", true, "NAVIGATION", Map.of("name", str(120)));
-        add("navigation.set_preference", "切换路线偏好", true, "NAVIGATION", Map.of(
-                "value", Map.of("type", "string", "enum", ROUTE_PREFERENCES)));
-        add("navigation.navigate_home", "导航到收藏的家；句中若含途经信号应由规划层先拆多点，禁止本能力抢跑", true, "NAVIGATION", Map.of());
-        add("navigation.navigate_company", "导航到收藏的公司；句中若含途经信号应由规划层先拆多点，禁止本能力抢跑", true, "NAVIGATION", Map.of());
-        add("navigation.set_home", "设置家地址收藏", true, "NAVIGATION", Map.of("place", str(120)));
-        add("navigation.set_company", "设置公司地址收藏", true, "NAVIGATION", Map.of("place", str(120)));
-        add("navigation.query_eta", "查询剩余时间/ETA；未在导航中须诚实说明", true, "NAVIGATION", Map.of());
-        add("navigation.query_status", "查询当前导航状态与目的地", true, "NAVIGATION", Map.of());
-        add("navigation.query_waypoints", "查询当前途经点列表", true, "NAVIGATION", Map.of());
-        add("navigation.set_prompt_enabled", "设置导航提示开关，不代表用户听到了声音", true, "NAVIGATION", Map.of("value", bool()));
-        add("navigation.set_volume", "设置导航独立音量0至10", true, "NAVIGATION", Map.of("value", integer(0, 10)));
-        add("navigation.set_muted", "兼容诊断：设置导航静音", true, "NAVIGATION", Map.of("value", bool()));
-
-        // 生活服务：仅接口 stub，会话/抢域逻辑见面试 QA；不实现真实点单业务
-        add("life.search_shops", "生活服务：搜店（接口 stub）", true, "LIFE", Map.of("keyword", str(80)));
-        add("life.enter_shop", "生活服务：进店（接口 stub）", true, "LIFE", Map.of("shop_name", str(80)));
-        add("life.add_to_cart", "生活服务：加购（接口 stub）", true, "LIFE", Map.of("item", str(80)));
-        add("life.go_to_checkout", "生活服务：去结算（接口 stub）", true, "LIFE", Map.of());
-        add("life.close", "生活服务：关闭外卖会话（接口 stub）", true, "LIFE", Map.of());
-
-        alias("cabin.set_temperature", "climate.set_temperature");
-        alias("cabin.set_fan", "climate.set_fan");
-        alias("device.read_state", "device.get_state");
-        alias("navigation.set_route", "navigation.start");
-        alias("navigation.exit", "navigation.stop");
-        alias("navigation.nav_exit", "navigation.stop");
+        this(defaultModules());
     }
 
-    private static Map<String, Object> integer(int min, int max) {
-        return Map.of("type", "integer", "minimum", min, "maximum", max);
+    public CapabilityRegistry(List<DomainModule> modules) {
+        CapabilityRegistrar registrar = new CapabilityRegistrar() {
+            @Override
+            public void add(String id, String description, boolean write, String domain, Map<String, Object> properties) {
+                capabilities.put(id, new CapabilityDefinition(
+                        id, VERSION, description, write, Set.of(domain),
+                        Map.of("type", "object",
+                                "properties", properties,
+                                "required", new ArrayList<>(properties.keySet()),
+                                "additionalProperties", false)));
+            }
+
+            @Override
+            public void alias(String alias, String canonicalId) {
+                CapabilityDefinition def = capabilities.get(canonicalId);
+                if (def == null) {
+                    throw new IllegalArgumentException("alias target missing: " + canonicalId);
+                }
+                capabilities.put(alias, def);
+            }
+        };
+        for (DomainModule module : modules) {
+            module.register(registrar);
+            moduleIds.add(module.id());
+        }
     }
 
-    private static Map<String, Object> bool() {
-        return Map.of("type", "boolean");
+    public static List<DomainModule> defaultModules() {
+        return List.of(new TerminalDomainModule(), new IotDomainModule());
     }
 
-    private static Map<String, Object> str(int max) {
-        return Map.of("type", "string", "minLength", 1, "maxLength", max);
-    }
-
-    private void add(String id, String desc, boolean write, String domain, Map<String, Object> props) {
-        capabilities.put(id, new CapabilityDefinition(
-                id, VERSION, desc, write, Set.of(domain),
-                Map.of("type", "object", "properties", props, "required", new ArrayList<>(props.keySet()), "additionalProperties", false)));
-    }
-
-    private void alias(String alias, String id) {
-        capabilities.put(alias, capabilities.get(id));
+    public List<String> moduleIds() {
+        return List.copyOf(moduleIds);
     }
 
     public Optional<CapabilityDefinition> get(String id) {

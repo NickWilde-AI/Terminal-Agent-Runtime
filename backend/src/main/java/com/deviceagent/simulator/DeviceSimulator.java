@@ -1,23 +1,17 @@
 package com.deviceagent.simulator;
 
 import com.deviceagent.capability.*;
+import com.deviceagent.device.ActionRecord;
+import com.deviceagent.device.DevicePort;
+import com.deviceagent.device.FaultType;
 import com.deviceagent.domain.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
-/** Device state and action records have no access to user text, goals or scoring data. */
-public class DeviceSimulator implements com.deviceagent.device.DevicePort {
-    public enum FaultType { NONE, REJECT, ACK_NOT_APPLIED, APPLIED_RESPONSE_LOST, DELAY_APPLY, TOOL_TIMEOUT, READ_FAIL, STALE_STATE }
-    public static class ActionRecord {
-        public String actionId,idempotencyKey,capabilityId,environmentId,runId,status,message;
-        public int goalVersion;
-        public Map<String,Object> params=new LinkedHashMap<>();
-        public Map<String,Long> expectedRevisions=new LinkedHashMap<>();
-        public Instant createdAt,finishedAt,deadline;
-        public long applyAfterMs,revision;
-    }
+/** Local DevicePort implementation: terminal state truth + fault injection. No access to user text/goals/scores. */
+public class DeviceSimulator implements DevicePort {
     private final CapabilityRegistry registry=new CapabilityRegistry();
     private final Map<String,Object> state=new LinkedHashMap<>();
     private final Map<String,Long> revisions=new LinkedHashMap<>();
@@ -31,7 +25,7 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
     private Consumer<Map<String,Object>> persistence=s -> {};
     private final CopyOnWriteArrayList<Consumer<Map<String,Object>>> changeListeners=new CopyOnWriteArrayList<>();
     public DeviceSimulator(){ defaults(); }
-    public String getDeviceId(){return "demo-cabin-1";}
+    public String getDeviceId(){return "terminal-1";}
     public synchronized String getEnvironmentId(){return environmentId;}
     public synchronized void onPersist(Consumer<Map<String,Object>> sink){persistence=sink;}
     /** @deprecated prefer {@link #addChangeListener(Consumer)} for multi-subscriber SSE */
@@ -47,7 +41,8 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
           "navigation_eta_minutes",null,"last_nav_query_type",null,"last_nav_query_result",null,
           "route_points",List.of(),"prompt_enabled",true,"navigation_volume",5,"navigation_muted",false,
           "route_available",true,"focus_available",true,"last_prompt_event_id",null,"last_prompt_at",null,"last_prompt_result",null,"last_prompt_navigation_revision",0L,
-          "life_session_active",false,"life_phase","idle","life_last_keyword",null,"life_last_shop",null,"life_last_item",null));
+          "life_session_active",false,"life_phase","idle","life_last_keyword",null,"life_last_shop",null,"life_last_item",null,
+          "light_power",false));
         CapabilityRegistry.WINDOWS.forEach(w -> state.put("window_"+w,0));
         for(var d:DeviceDomain.values()) revisions.put(d.name(),1L);
         origins.clear(); revision=1;
@@ -368,6 +363,7 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
     private String domain(String field){
         if(field.startsWith("media_")) return "MEDIA";
         if(field.startsWith("life_")) return "LIFE";
+        if(field.startsWith("light_") || field.startsWith("iot_")) return "IOT";
         if(field.startsWith("last_")||field.equals("route_available")||field.equals("focus_available")) return "AUDIO";
         if(field.startsWith("navigation_")||field.equals("prompt_enabled")||field.equals("route_points")
                 ||field.equals("last_nav_query_type")||field.equals("last_nav_query_result")) return "NAVIGATION";

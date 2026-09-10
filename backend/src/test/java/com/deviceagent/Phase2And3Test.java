@@ -1,5 +1,8 @@
 package com.deviceagent;
 
+import com.deviceagent.device.ActionRecord;
+import com.deviceagent.device.FaultType;
+
 import com.deviceagent.config.DeviceAgentProperties;
 import com.deviceagent.domain.ExecutionStatus;
 import com.deviceagent.eval.EvalRunner;
@@ -42,7 +45,7 @@ class Phase2And3Test {
     @Test
     void f03_responseLost_reconcilesApplied() {
         simulator.externalChange("temperature_setpoint", 26);
-        simulator.injectFault(DeviceSimulator.FaultType.APPLIED_RESPONSE_LOST, "cabin.set_temperature", 1);
+        simulator.injectFault(FaultType.APPLIED_RESPONSE_LOST, "cabin.set_temperature", 1);
         var run = harnessService.createRun("f03-" + UUID.randomUUID(), "把空调设为 23 度", "test");
         assertEquals(23, simulator.readState(null).getState().get("temperature_setpoint"));
         assertTrue(run.getActions().stream().anyMatch(a -> a.getExecutionStatus() == ExecutionStatus.APPLIED));
@@ -52,7 +55,7 @@ class Phase2And3Test {
     @Test
     void f04_delayApply_thenComplete() {
         simulator.externalChange("temperature_setpoint", 26);
-        simulator.injectFault(DeviceSimulator.FaultType.DELAY_APPLY, "cabin.set_temperature", 1);
+        simulator.injectFault(FaultType.DELAY_APPLY, "cabin.set_temperature", 1);
         var run = harnessService.createRun("f04-" + UUID.randomUUID(), "把空调设为 23 度", "test");
         assertEquals(23, simulator.readState(null).getState().get("temperature_setpoint"));
         assertEquals("COMPLETED", run.getLifecycle().name());
@@ -120,7 +123,7 @@ class Phase2And3Test {
         Map<String, Object> report = evalRunner.run("agent");
         int total = ((Number) report.get("total")).intValue();
         int passed = ((Number) report.get("passed")).intValue();
-        assertEquals(52, total);
+        assertEquals(54, total);
         assertTrue(passed >= 38, "expected most seeds to pass, passed=" + passed + " report=" + report.get("cases"));
         assertEquals(0, ((Number) report.get("false_success")).intValue());
     }

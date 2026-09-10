@@ -382,6 +382,24 @@ public final class GoalCompiler {
                 ensureCoverage(c, intents);
                 return c;
             }
+            if (intents.contains("light_power")) {
+                boolean on = text.contains("打开灯") || text.contains("开灯") || text.contains("把灯打开")
+                        || text.contains("开启灯光") || text.contains("开一下灯");
+                boolean off = text.contains("关闭灯") || text.contains("关灯") || text.contains("把灯关掉")
+                        || text.contains("关掉灯") || text.contains("关一下灯");
+                if (on == off) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "请说明是开灯还是关灯";
+                    c.summary = "灯光目标不明";
+                    return c;
+                }
+                addGoal(c, "light_power", on, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "iot.light.set_power", "params", Map.of("value", on));
+                c.summary = on ? "打开智能灯" : "关闭智能灯";
+                ensureCoverage(c, intents);
+                return c;
+            }
         }
 
         if (complex || intents.size() > 1 || text.contains("休息") || text.contains("舒服")
@@ -590,6 +608,13 @@ public final class GoalCompiler {
         if (intents.contains("life_close")) {
             addGoal(c, "life_close", true, "user");
         }
+        if (intents.contains("light_power")) {
+            boolean on = text.contains("打开灯") || text.contains("开灯") || text.contains("把灯打开")
+                    || text.contains("开启灯光");
+            boolean off = text.contains("关闭灯") || text.contains("关灯") || text.contains("把灯关掉")
+                    || text.contains("关掉灯");
+            if (on ^ off) addGoal(c, "light_power", on, "user");
+        }
         if (keepNav) {
             c.criteria.add(criterion("nav_prompt_retained", Map.of(
                     "require_active", true,
@@ -649,6 +674,7 @@ public final class GoalCompiler {
                 case "life_add_to_cart" -> covered.add("life_add_to_cart");
                 case "life_go_to_checkout" -> covered.add("life_go_to_checkout");
                 case "life_close" -> covered.add("life_close");
+                case "light_power" -> covered.add("light_power");
                 default -> {}
             }
         }
@@ -786,6 +812,11 @@ public final class GoalCompiler {
         if (closeLife) {
             intents.add("life_close");
         }
+        if ((t.contains("开灯") || t.contains("打开灯") || t.contains("关灯") || t.contains("关闭灯")
+                || t.contains("把灯打开") || t.contains("把灯关掉") || t.contains("开启灯光") || t.contains("关掉灯"))
+                && !t.contains("车灯")) {
+            intents.add("light_power");
+        }
         return intents;
     }
 
@@ -815,6 +846,7 @@ public final class GoalCompiler {
             case "nav_prompt_enabled" -> "nav_prompt_enabled_eq";
             case "nav_muted" -> "nav_muted_eq";
             case "nav_volume" -> "nav_volume_eq";
+            case "light_power" -> "light_power_eq";
             default -> null;
         };
         if (template != null) {

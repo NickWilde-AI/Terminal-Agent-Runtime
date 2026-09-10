@@ -2,7 +2,6 @@ package com.deviceagent.device;
 
 import com.deviceagent.domain.DeviceDomain;
 import com.deviceagent.domain.StateSnapshot;
-import com.deviceagent.simulator.DeviceSimulator;
 
 import java.time.Instant;
 import java.util.Map;
@@ -11,15 +10,23 @@ import java.util.function.Consumer;
 
 /**
  * Device adapter boundary. Harness, Policy and Verifier depend on this port,
- * not on a specific simulator or vehicle SDK.
+ * not on a specific simulator or terminal SDK.
+ *
+ * Core invariant: Harness + Agent remain the execution center; domains plug in
+ * through Capability + DevicePort, without rewriting the main loop.
  */
 public interface DevicePort {
     String getDeviceId();
+
     String getEnvironmentId();
+
     StateSnapshot readState(Set<DeviceDomain> domains);
+
     StateSnapshot snapshot();
+
     Map<String, Object> view();
-    DeviceSimulator.ActionRecord applyWrite(
+
+    ActionRecord applyWrite(
             String actionId,
             String idempotencyKey,
             String capabilityId,
@@ -30,13 +37,22 @@ public interface DevicePort {
             String runId,
             int goalVersion
     );
-    DeviceSimulator.ActionRecord queryAction(String actionId);
+
+    ActionRecord queryAction(String actionId);
+
     void resetToDefaults();
+
     void forceNewEnvironment();
-    void injectFault(DeviceSimulator.FaultType type, String capabilityId, int times);
+
+    void injectFault(FaultType type, String capabilityId, int times);
+
     void clearFault();
+
     void applyInitialState(Map<String, Object> fields);
+
     void externalChange(String field, Object value);
+
     void addChangeListener(Consumer<Map<String, Object>> listener);
+
     void onPersist(Consumer<Map<String, Object>> sink);
 }

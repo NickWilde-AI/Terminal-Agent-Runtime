@@ -9,6 +9,7 @@ import com.deviceagent.memory.MemoryEntry;
 import com.deviceagent.memory.MemoryService;
 import com.deviceagent.model.ModelPort;
 import com.deviceagent.model.ModelRouter;
+import com.deviceagent.device.FaultType;
 import com.deviceagent.simulator.DeviceSimulator;
 import com.deviceagent.store.InMemoryRunStore;
 import jakarta.validation.constraints.NotBlank;
@@ -195,7 +196,7 @@ public class ApiController {
     @PostMapping("/experiment/fault")
     public Map<String, Object> fault(@RequestBody FaultRequest req) {
         simulator.injectFault(
-                DeviceSimulator.FaultType.valueOf(req.type()),
+                FaultType.valueOf(req.type()),
                 req.capabilityId(),
                 req.times() == null ? 1 : req.times()
         );

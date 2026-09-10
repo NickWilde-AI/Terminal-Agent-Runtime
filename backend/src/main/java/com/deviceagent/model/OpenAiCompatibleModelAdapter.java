@@ -110,7 +110,7 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
                 4) 「不要开窗」是约束 no_window，不是拒绝开窗能力；用户明确开窗且无禁止约束时必须绑定 window_position。
                 5) 用户提到的每个显式子目标都必须进入 goals，禁止只编译温度而丢掉车窗/播放/导航。
                 6) 导航原则：明确目的地直接开航；途经不丢终点；search 失败诚实；「回家/去公司」若含途经/顺路则拆成收藏开航+途经，禁止只走收藏抢跑。
-                允许能力：climate.*, window.set_position, media.*, navigation.*（含途经/偏好/收藏/查询）, life.*（仅接口）,
+                允许能力：climate.*, window.set_position, media.*, navigation.*（含途经/偏好/收藏/查询）, life.*（仅接口）, iot.light.set_power（第二域样例）,
                 device.get_state。
                 """;
         String user = "用户原话：" + userText

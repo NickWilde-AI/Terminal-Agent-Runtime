@@ -5,5 +5,7 @@ public enum DeviceDomain {
     MEDIA,
     NAVIGATION,
     AUDIO,
-    LIFE
+    LIFE,
+    /** Minimal second domain for proving DomainModule / DevicePort plug-in. */
+    IOT
 }

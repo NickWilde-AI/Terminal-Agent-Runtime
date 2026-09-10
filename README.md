@@ -31,7 +31,7 @@
 | 交互层 | Chat / 语音 / IDE / 工作台 | 提供联调工作台；业务 UI 可自建 |
 | **执行层** | 任务状态、策略、工具、回读、记忆、评测 | **本项目的中心** |
 
-仓库内置 **智能终端演示域**（环境控制、多媒体、出行导航可信执行、生活服务接口 stub）用于完整跑通闭环；同一套协议可扩展到手机、IoT、机器人、云运维、GUI / Coding Agent、Agent 平台等场景。
+仓库内置 **智能终端能力域**（环境控制、多媒体、出行导航可信执行、生活服务接口 stub，以及可插拔的 IoT 灯控样例）用于完整跑通闭环；同一套协议可扩展到手机、IoT、机器人、车载、云运维、GUI / Coding Agent、Agent 平台等场景。核心永远是 **Harness + Agent**，域通过 Capability / DevicePort 接入。
 
 30 秒上手：
 
@@ -69,7 +69,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
                                可验收终态 ──▶ Trace + Eval
 ```
 
-**演示域标杆任务：**
+**智能终端标杆任务：**
 
 1. **跨域复合目标**：环境舒适度 + 媒体音量 + 导航提示保留，在约束、故障注入与用户改口下，仍执行到可回读终态。  
 2. **出行导航可信执行**：明确目的地开航、途经不丢终点、未知 POI 诚实失败、回家/公司收藏、路线偏好、暂停/继续/ETA 查询；「回家途经加油站」禁止收藏开航抢跑。  
@@ -103,6 +103,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | **三维证据** | `execution_status` / `verification_status` / `attribution` 分离；ACK ≠ APPLIED；数值碰巧相等 ≠ 本任务造成 |
 | **UNKNOWN 对账** | 响应丢失先读状态再决策，不盲目重发写动作 |
 | **策略门禁** | 能力白名单、参数范围、领域约束、敏感动作确认等待 |
+| **域可插拔** | `DomainModule` 注册能力包；`DevicePort` 适配真实终端；内置 `terminal` + `iot` 两域样例 |
 | **用户介入** | 取消、运行中改目标、澄清回答、批准 / 拒绝 |
 | **上下文工程** | 每步最小注入：当前目标、约束、相关状态、必要对话 |
 | **受控长期记忆** | 偏好写入门禁、隐私拦截、冲突仲裁、可审计；可参与默认值建议 |
@@ -111,17 +112,17 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | **设备模拟器** | 本地真值状态、延迟、故障注入、外部扰动；导航 POI 搜索失败诚实；生活服务仅会话占位 |
 | **3D 工作台** | React Three Fiber 程序化车辆；车窗/空调气流/媒体频谱/导航路线只绑定 Simulator Snapshot |
 | **可观测** | Run 事件流（SSE）、只读回放、Trace 落盘；工作台实时展示 |
-| **评测** | Fake 业务种子 **52** 例（含 **N01–N12** 出行导航）；`agent` / `baseline` 对照；门禁关注 `false_success=0`；断言独立于 Planner |
+| **评测** | Fake 业务种子 **54** 例（含 **N01–N12** 出行导航与 **I01–I02** IoT 灯控）；`agent` / `baseline` 对照；门禁关注 `false_success=0`；断言独立于 Planner |
 | **工作台** | 任务、设备、介入、记忆、故障、回放、评测一站式 |
 | **持久化** | SQLite 任务 / 事件；支持重启后的恢复路径 |
 | **一键部署** | `./start.sh`：默认 Docker Compose；`--local` 可切本地单进程；工作台 + API 同端口 |
 
 ### 设计原则
 
-1. **领域可插拔** — 新增能力优先加 Capability Schema + Adapter，不重写主循环  
+1. **领域可插拔** — 新增能力优先加 `DomainModule` + DevicePort Adapter，不重写 Harness / Agent 主循环  
 2. **安全边界清晰** — Policy 是确定性代码；模型不能发明未注册工具  
 3. **验收独立于叙事** — 成败看状态谓词与证据，不看模型自我总结  
-4. **演示域 ≠ 框架边界** — 内置域用于验证闭环；执行层面向广泛真实系统  
+4. **内置能力 ≠ 框架边界** — 内置智能终端能力用于验证闭环；执行层面向广泛真实系统  
 5. **模型可替换** — 换网关与模型 ID 即可，Runtime 契约不变  
 
 ### 本仓库边界
@@ -146,7 +147,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 | 场景 | 状态从哪来 | 动作是什么 | 怎样算真正完成 |
 | --- | --- | --- | --- |
-| **智能终端演示域**（仓库内置） | 环境、媒体、导航、生活服务会话等设备真值 | 设定、开航/途经、多域协同、life stub | 回读满足目标与约束；导航失败诚实 |
+| **智能终端**（仓库内置） | 环境、媒体、导航、生活服务会话、IoT 灯控等设备真值 | 设定、开航/途经、多域协同、life stub、灯开关 | 回读满足目标与约束；导航失败诚实 |
 | **手机 / 平板 / 穿戴** | 系统设置、通知、应用状态 | 端侧工具与快捷操作 | 系统状态与权限边界一致 |
 | **IoT / 智能家居** | 灯、锁、传感、网关 | 开合、模式、场景联动 | 设备上报与目标谓词一致 |
 | **具身机器人** | 位姿、夹爪、传感器 | 移动、抓取、放置 | 感知回读，而不只看指令回执 |
@@ -179,13 +180,13 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 ### 4.2 扩展步骤
 
-1. 用演示域跑通 `./start.sh`，理解路由 → 执行 → 回读 → 评测  
+1. 用智能终端能力跑通 `./start.sh`，理解路由 → 执行 → 回读 → 评测  
 2. 为新域注册 Capability Schema，实现 Adapter（读状态 / 写动作）  
 3. 编写领域 Policy 与验收谓词（什么允许做、怎样算完成）  
 4. 按需切换 ModelPort 后端（任意 OpenAI-compatible 网关）  
 5. 用 Eval 用例锁住回归，避免「看起来成功、实际未生效」  
 
-当前仓库**完整落地**的是智能终端演示域；上表是同一执行思想可应用的方向。欢迎贡献新域 Adapter 与评测用例。
+当前仓库完整落地智能终端能力闭环，并提供第二域 IoT 灯控样例证明可插拔；上表是同一执行思想可应用的方向。欢迎贡献新 DomainModule / DevicePort 与评测用例。
 
 ---
 
@@ -289,7 +290,7 @@ http://localhost:8080
 | 5. 中途改主意 | 任务还在跑时点「取消」，或输入「改成 25 度」 | 旧任务停住；新目标接管；不会继续执行已经作废的计划 |
 | 6. 试试生活服务 stub | 输入「点外卖咖啡」，再输入「导航到东方明珠」 | 先进入 life 会话占位；开航后会话被打断关闭（不宣称真实下单） |
 | 7. 试试长期记忆 | 输入「记住我喜欢温度 24 度」，再开一个相关任务 | 记忆列表出现这条偏好；后续任务可把它当默认建议，但仍受安全策略约束 |
-| 8. 跑一遍评测 | 点工作台里的评测，或用下面的命令 | Fake 约 52 例业务种子；关注 `false_success=0`；可对照 agent / baseline |
+| 8. 跑一遍评测 | 点工作台里的评测，或用下面的命令 | Fake 约 54 例业务种子；关注 `false_success=0`；可对照 agent / baseline |
 
 工作台的作用很简单：证明系统**不只会聊天**，而是**真的改到了状态**，并且异常、取消、改口也能兜住。
 
@@ -436,14 +437,14 @@ cd backend && mvn test
 ```
 
 覆盖面包括：简单指令、复杂多目标、故障、策略拒绝、取消与改目标、记忆规则，以及 **出行导航可信执行（N01–N12）**。  
-当前 Fake 评测基线为 **52** 例业务种子（`EvalCatalog`），门禁关注 `false_success=0`。注意：`mvn test` 的 JUnit 方法数是另一维度，勿与 52 混说。
+当前 Fake 评测基线为 **54** 例业务种子（`EvalCatalog`），门禁关注 `false_success=0`。注意：`mvn test` 的 JUnit 方法数是另一维度，勿与 54 混说。
 
 两种评测模式：
 
 - `agent`：按真实闭环一步步做完再验收  
 - `baseline`：先编译再一次性展开，用来对照「有没有状态反馈循环」带来的差异  
 
-详见 [docs/evaluation.md](./docs/evaluation.md)。能力清单见 [docs/capabilities.md](./docs/capabilities.md)（`capabilities-v3`）。
+详见 [docs/evaluation.md](./docs/evaluation.md)。能力清单见 [docs/capabilities.md](./docs/capabilities.md)（`capabilities-v4`）。扩展新域见 [docs/extending.md](./docs/extending.md)。
 
 ---
 
@@ -488,6 +489,7 @@ cd backend && mvn test
 | --- | --- |
 | [docs/architecture.md](./docs/architecture.md) | 总体架构与数据流 |
 | [docs/capabilities.md](./docs/capabilities.md) | 工具 / Capability 契约 |
+| [docs/extending.md](./docs/extending.md) | 扩展新域 / 新能力（DomainModule + DevicePort） |
 | [docs/api.md](./docs/api.md) | HTTP API 详解 |
 | [docs/evaluation.md](./docs/evaluation.md) | 评测与回归 |
 | [examples/curl_demos.md](./examples/curl_demos.md) | curl 演示 |

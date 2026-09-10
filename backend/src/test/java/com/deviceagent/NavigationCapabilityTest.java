@@ -22,8 +22,10 @@ class NavigationCapabilityTest {
         assertTrue(registry.get("navigation.navigate_home").isPresent());
         assertTrue(registry.get("life.search_shops").isPresent());
         assertTrue(registry.get("life.close").isPresent());
+        assertTrue(registry.get("iot.light.set_power").isPresent());
         assertEquals("navigation.start", registry.canonical("navigation.set_route"));
-        assertEquals("capabilities-v3", CapabilityRegistry.VERSION);
+        assertEquals("capabilities-v4", CapabilityRegistry.VERSION);
+        assertEquals(List.of("terminal", "iot"), registry.moduleIds());
     }
 
     @Test
@@ -152,5 +154,19 @@ class NavigationCapabilityTest {
         assertEquals(true, state.get("navigation_active"));
         assertEquals(false, state.get("life_session_active"));
         assertEquals("idle", state.get("life_phase"));
+    }
+
+    @Test
+    void iotLightSecondDomainWorks() {
+        var sim = new DeviceSimulator();
+        var on = sim.applyWrite("a1", "k1", "iot.light.set_power", Map.of("value", true),
+                sim.getEnvironmentId(), null, Map.of());
+        assertEquals("APPLIED", on.status);
+        assertEquals(true, sim.readState(null).getState().get("light_power"));
+
+        CompiledTaskCandidate c = GoalCompiler.compile("打开灯", null, List.of());
+        assertEquals("FAST", c.routeHint);
+        assertEquals("iot.light.set_power", c.fastAction.get("capability_id"));
+        assertEquals(true, ((Map<?, ?>) c.fastAction.get("params")).get("value"));
     }
 }

@@ -46,6 +46,7 @@ public final class CapabilityEffects {
             case "life.add_to_cart" -> Map.of("life_session_active", true, "life_phase", "in_shop");
             case "life.go_to_checkout" -> Map.of("life_session_active", true, "life_phase", "checkout");
             case "life.close" -> Map.of("life_session_active", false, "life_phase", "idle");
+            case "iot.light.set_power", "light.set_power" -> Map.of("light_power", v);
             // query / waypoint list mutations are resolved in the simulator (state-dependent)
             default -> Map.of();
         };

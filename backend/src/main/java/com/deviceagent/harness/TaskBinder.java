@@ -81,6 +81,7 @@ public class TaskBinder {
             case "life_add_to_cart" -> Ids.dict("capability_id","life.add_to_cart","params",Ids.dict("item",g.get("item")));
             case "life_go_to_checkout" -> Ids.dict("capability_id","life.go_to_checkout","params",Map.of());
             case "life_close" -> Ids.dict("capability_id","life.close","params",Map.of());
+            case "light_power" -> Ids.dict("capability_id","iot.light.set_power","params",Ids.dict("value",g.get("value")));
             default -> null;
         };
     }

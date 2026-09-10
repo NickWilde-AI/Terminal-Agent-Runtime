@@ -1,5 +1,8 @@
 package com.deviceagent;
 
+import com.deviceagent.device.ActionRecord;
+import com.deviceagent.device.FaultType;
+
 import com.deviceagent.harness.HarnessService;
 import com.deviceagent.simulator.DeviceSimulator;
 import com.deviceagent.store.InMemoryRunStore;
@@ -72,7 +75,7 @@ class Phase1FastPathTest {
     @Test
     void ackNotApplied_noFalseSuccess() {
         simulator.externalChange("temperature_setpoint", 26);
-        simulator.injectFault(DeviceSimulator.FaultType.ACK_NOT_APPLIED, "cabin.set_temperature", 1);
+        simulator.injectFault(FaultType.ACK_NOT_APPLIED, "cabin.set_temperature", 1);
         var run = harnessService.createRun("req-" + UUID.randomUUID(), "把空调设为 23 度", "test");
         assertEquals(26, simulator.readState(null).getState().get("temperature_setpoint"));
         assertTrue(run.getActions().stream().anyMatch(a -> a.getExecutionStatus().name().equals("NOT_APPLIED")));

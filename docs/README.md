@@ -6,5 +6,6 @@
 | --- | --- |
 | [architecture.md](./architecture.md) | 总体架构与数据流 |
 | [capabilities.md](./capabilities.md) | 工具 / Capability 契约 |
+| [extending.md](./extending.md) | 扩展新域 / 新能力 |
 | [api.md](./api.md) | HTTP API 一览 |
 | [evaluation.md](./evaluation.md) | 评测与回归 |

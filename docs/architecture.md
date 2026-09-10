@@ -2,7 +2,7 @@
 
 Terminal Agent Runtime（智能终端 Agent Runtime）面向智能终端提供 Agent 执行运行时：模型负责理解与候选动作，Runtime 负责任务状态、策略、工具分发、状态回读与验收。
 
-框架与业务域解耦。仓库内置的环境控制 / 多媒体 / 导航等能力是代表性演示域，用于验证「有副作用、有状态」的闭环；同一套执行思想可映射到 IoT、机器人、云运维、GUI / Coding Agent 与通用 Agent 平台——换 Capability、状态模型与 Policy，不换主循环。详见根目录 README「核心思想：执行层可跨域复用」。
+框架与业务域解耦。仓库内置智能终端能力（环境控制 / 多媒体 / 导航 / 生活服务 stub）以及第二域 IoT 灯控样例，用于验证「有副作用、有状态」的闭环；同一套执行思想可映射到手机、IoT、机器人、车载、云运维、GUI / Coding Agent 与通用 Agent 平台——换 DomainModule、状态模型与 DevicePort，**不换 Harness / Agent 主循环**。详见 [extending.md](./extending.md)。
 
 ```text
 用户输入（语音转写 / 终端 UI / Web）

@@ -22,7 +22,7 @@ class FakeEvalGateTest {
     void fakeAgentEvalShouldPassAllSeeds() {
         Map<String, Object> report = evalRunner.run("agent");
         assertEquals("fake", report.get("model_mode"));
-        assertEquals(52, report.get("total"));
+        assertEquals(54, report.get("total"));
         int failed = ((Number) report.get("failed")).intValue();
         if (failed > 0) {
             @SuppressWarnings("unchecked")

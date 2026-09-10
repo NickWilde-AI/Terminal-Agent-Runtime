@@ -10,6 +10,7 @@ import com.deviceagent.harness.BaselineRunner;
 import com.deviceagent.harness.HarnessService;
 import com.deviceagent.model.ModelPort;
 import com.deviceagent.policy.PolicyEngine;
+import com.deviceagent.device.FaultType;
 import com.deviceagent.simulator.DeviceSimulator;
 import com.deviceagent.store.InMemoryRunStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -133,7 +134,7 @@ public class EvalRunner {
                 simulator.applyInitialState(c.initialState);
             }
             if (c.faultType != null) {
-                simulator.injectFault(DeviceSimulator.FaultType.valueOf(c.faultType), c.faultCapability, c.faultTimes);
+                simulator.injectFault(FaultType.valueOf(c.faultType), c.faultCapability, c.faultTimes);
             }
 
             if ("policy".equals(c.category) && c.candidateCapability != null) {

@@ -35,6 +35,7 @@ public class Verifier {
             case "nav_waypoint_contains" -> m.get("navigation_waypoints") instanceof java.util.List<?> list && list.contains(p.get("name"));
             case "nav_waypoint_absent" -> !(m.get("navigation_waypoints") instanceof java.util.List<?> list && list.contains(p.get("name")));
             case "nav_query_type" -> Objects.equals(m.get("last_nav_query_type"), p.get("type"));
+            case "light_power_eq" -> CapabilityEffects.eq(m.get("light_power"), p.get("value"));
             default -> false;
         };
     }
