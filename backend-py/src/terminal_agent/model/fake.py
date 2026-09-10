@@ -53,7 +53,7 @@ class FakeModelAdapter:
         prior_actions: list[dict[str, Any]], memory_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         from terminal_agent.agent.multi_agent import MultiAgentSupport
-        from terminal_agent.runtime.task_binder import TaskBinder
+        from terminal_agent.runtime.support import TaskBinder
 
         allowed = []
         for goal in goals or []:

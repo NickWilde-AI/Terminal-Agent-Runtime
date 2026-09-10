@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from terminal_agent.agent.contracts import CompiledTaskCandidate, PlanDraft, ReviewResult, TaskSpec
-from terminal_agent.capability.registry import CapabilityRegistry
+from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.domain.models import AgentRole, ReviewDecision, StateSnapshot
 from terminal_agent.model.normalizer import ModelOutputNormalizer
 from terminal_agent.model.router import ModelRouter
@@ -213,7 +213,7 @@ class OpenAiCompatibleModelAdapter:
     def tools_for_task(
         self, goals: list[dict[str, Any]] | None, constraints: list[dict[str, Any]] | None,
     ) -> list[dict[str, Any]]:
-        from terminal_agent.runtime.task_binder import TaskBinder
+        from terminal_agent.runtime.support import TaskBinder
 
         allowed = {"device.get_state"}
         for goal in goals or []:

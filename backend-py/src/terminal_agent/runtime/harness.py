@@ -592,6 +592,18 @@ class HarnessService:
         summary: str | None,
         outcome: GoalOutcome,
     ) -> None:
+        async with self.store.run_lock(run.run_id):
+            await self._finish_locked(run, lifecycle, reason, summary, outcome)
+
+    async def _finish_locked(
+        self,
+        run: RunRecord,
+        lifecycle: RunLifecycle,
+        reason: str | None,
+        summary: str | None,
+        outcome: GoalOutcome,
+    ) -> None:
+        """Caller must hold store.run_lock(run.run_id)."""
         if run.is_terminal():
             return
         deadline_task = self._deadlines.pop(run.run_id, None)
@@ -600,7 +612,9 @@ class HarnessService:
         run.lifecycle, run.phase, run.pending = lifecycle, RunPhase.FINISH, None
         run.stop_reason, run.result_summary, run.goal_outcome = reason, summary, outcome
         if "final_state" not in run.evaluation_snapshot:
-            run.evaluation_snapshot["final_state"] = (await self.device.snapshot()).state
+            # Snapshot outside nested awaits that could race terminal flag: capture under lock.
+            snap = await self.device.snapshot()
+            run.evaluation_snapshot["final_state"] = snap.state
         await self.store.append_event(
             run, "RUN_FINISHED", {"lifecycle": lifecycle.value, "stop_reason": reason, "summary": summary}
         )
@@ -617,14 +631,19 @@ class HarnessService:
 
     async def cancel(self, id_: str) -> RunRecord:
         run = self._get(id_)
-        if run.is_terminal():
-            return run
-        run.cancel_accepted = True
-        await self._invalidate_pending(run)
-        await self.store.append_event(run, "CANCEL_ACCEPTED", {"in_flight": run.in_flight_action_id})
-        await self._finish(
-            run, RunLifecycle.CANCELLED, "USER_CANCEL", "已取消后续执行；取消前在途动作仍可能生效", GoalOutcome.UNKNOWN
-        )
+        async with self.store.run_lock(run.run_id):
+            if run.is_terminal():
+                return run
+            run.cancel_accepted = True
+            await self._invalidate_pending(run)
+            await self.store.append_event(run, "CANCEL_ACCEPTED", {"in_flight": run.in_flight_action_id})
+            await self._finish_locked(
+                run,
+                RunLifecycle.CANCELLED,
+                "USER_CANCEL",
+                "已取消后续执行；取消前在途动作仍可能生效",
+                GoalOutcome.UNKNOWN,
+            )
         return run
 
     async def intervene(

@@ -19,6 +19,8 @@ from terminal_agent.contracts import (
     TaskSpec,
     now,
 )
+from terminal_agent.runtime.task_binder import action_for as shared_action_for
+from terminal_agent.runtime.task_binder import action_params as shared_action_params
 
 
 class BudgetSettings(BaseModel):
@@ -185,49 +187,11 @@ class TaskBinder:
 
     @staticmethod
     def params(action: dict[str, Any]) -> dict[str, Any]:
-        return dict(action.get("params") or {}) if isinstance(action.get("params"), dict) else {}
+        return shared_action_params(action)
 
     @staticmethod
     def action_for(goal: dict[str, Any]) -> dict[str, Any] | None:
-        if "capability_id" in goal:
-            return {"capability_id": goal["capability_id"], "params": goal.get("params", {})}
-        mappings: dict[str, tuple[str, dict[str, Any]]] = {
-            "climate_power": ("climate.set_power", {"value": goal.get("value")}),
-            "cabin_temperature": ("climate.set_temperature", {"value": goal.get("value")}),
-            "cabin_fan": ("climate.set_fan", {"value": goal.get("value")}),
-            "window_position": (
-                "window.set_position",
-                {"window": goal.get("window", "all"), "position": goal.get("position")},
-            ),
-            "media_play": ("media.play", {"artist": goal.get("artist")}),
-            "media_pause": ("media.pause", {}),
-            "media_volume": ("media.set_volume", {"value": goal.get("value")}),
-            "nav_start": ("navigation.start", {"destination": goal.get("destination")}),
-            "nav_stop": ("navigation.stop", {}),
-            "nav_pause": ("navigation.pause", {}),
-            "nav_resume": ("navigation.resume", {}),
-            "nav_add_waypoint": ("navigation.add_waypoint", {"name": goal.get("name")}),
-            "nav_remove_waypoint": ("navigation.remove_waypoint", {"name": goal.get("name")}),
-            "nav_preference": ("navigation.set_preference", {"value": goal.get("value")}),
-            "nav_home": ("navigation.navigate_home", {}),
-            "nav_company": ("navigation.navigate_company", {}),
-            "nav_set_home": ("navigation.set_home", {"place": goal.get("place")}),
-            "nav_set_company": ("navigation.set_company", {"place": goal.get("place")}),
-            "nav_query_eta": ("navigation.query_eta", {}),
-            "nav_query_status": ("navigation.query_status", {}),
-            "nav_query_waypoints": ("navigation.query_waypoints", {}),
-            "nav_prompt_enabled": ("navigation.set_prompt_enabled", {"value": goal.get("value")}),
-            "nav_volume": ("navigation.set_volume", {"value": goal.get("value")}),
-            "nav_muted": ("navigation.set_muted", {"value": goal.get("value")}),
-            "life_search_shops": ("life.search_shops", {"keyword": goal.get("keyword")}),
-            "life_enter_shop": ("life.enter_shop", {"shop_name": goal.get("shop_name")}),
-            "life_add_to_cart": ("life.add_to_cart", {"item": goal.get("item")}),
-            "life_go_to_checkout": ("life.go_to_checkout", {}),
-            "life_close": ("life.close", {}),
-            "light_power": ("iot.light.set_power", {"value": goal.get("value")}),
-        }
-        pair = mappings.get(str(goal.get("type")))
-        return {"capability_id": pair[0], "params": pair[1]} if pair else None
+        return shared_action_for(goal)
 
 
 def task_spec_from(task: DeviceTask, run_id: str, model_id: str) -> TaskSpec:

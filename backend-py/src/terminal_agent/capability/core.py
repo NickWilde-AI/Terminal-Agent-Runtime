@@ -104,8 +104,46 @@ class CapabilityRegistry:
     def get(self, id_: str) -> CapabilityDefinition | None:
         return self.capabilities.get(id_)
 
+    def all(self) -> list[CapabilityDefinition]:
+        seen: set[str] = set()
+        out: list[CapabilityDefinition] = []
+        for definition in self.capabilities.values():
+            if definition.id in seen:
+                continue
+            seen.add(definition.id)
+            out.append(definition)
+        return out
+
     def canonical(self, id_: str) -> str:
         return self.capabilities[id_].id if id_ in self.capabilities else id_
+
+    @staticmethod
+    def wire_name(id_: str) -> str:
+        return id_.replace(".", "_")
+
+    def from_wire(self, name: str) -> str:
+        for definition in self.all():
+            if self.wire_name(definition.id) == name:
+                return definition.id
+        return name
+
+    def tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": self.wire_name(definition.id),
+                    "description": f"{definition.id}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": definition.properties,
+                        "required": list(definition.properties.keys()),
+                        "additionalProperties": False,
+                    },
+                },
+            }
+            for definition in self.all()
+        ]
 
     def validate(self, id_: str, params: dict[str, Any] | None) -> ValidationResult:
         definition = self.get(id_)
@@ -119,10 +157,12 @@ class CapabilityRegistry:
             value, kind = params[key], schema["type"]
             ok = False
             if kind == "integer":
+                # Java: Number with finite doubleValue == intValue within [min,max]
                 ok = (
-                    isinstance(value, int)
+                    isinstance(value, (int, float))
                     and not isinstance(value, bool)
-                    and schema["minimum"] <= value <= schema["maximum"]
+                    and float(value) == int(value)
+                    and schema["minimum"] <= int(value) <= schema["maximum"]
                 )
             elif kind == "boolean":
                 ok = isinstance(value, bool)

@@ -66,6 +66,7 @@ class CapabilityExecutor:
         version: int | None = None,
         planned: StateSnapshot | None = None,
     ) -> ToolAction:
+        """Authorize under per-run lock; never hold the lock while awaiting device I/O."""
         version = run.task.goal_version if version is None else version
         action = ToolAction(
             action_id=new_id("act"),
@@ -79,60 +80,84 @@ class CapabilityExecutor:
         )
         action.idempotency_key = action.action_id
         before = planned or await self.read(run, set())
-        run.actions.append(action)
-        await self.store.append_event(
-            run,
-            "ACTION_PROPOSED",
-            {"action_id": action.action_id, "capability_id": capability_id, "params": params, "goal_version": version},
-        )
-        if (
-            run.is_terminal()
-            or run.cancel_accepted
-            or version != run.task.goal_version
-            or run.environment_id != self.device.environment_id
-        ):
-            return await self._reject(run, action, ExecutionStatus.CANCELLED_BEFORE_DISPATCH, "过期目标、环境或已取消")
-        if run.in_flight_action_id or run.unresolved_unknown:
-            return await self._reject(run, action, ExecutionStatus.REJECTED, "另有在途或未知动作")
-        decision = self.policy.decide(run, capability_id, params)
-        await self.store.append_event(
-            run,
-            "POLICY",
-            {"action_id": action.action_id, "decision": decision.decision.value, "message": decision.message},
-        )
-        if decision.decision == PolicyDecision.DENY:
-            return await self._reject(
-                run, action, ExecutionStatus.REJECTED, decision.message or decision.code or "DENIED"
+
+        async with self.store.run_lock(run.run_id):
+            run.actions.append(action)
+            await self.store.append_event(
+                run,
+                "ACTION_PROPOSED",
+                {
+                    "action_id": action.action_id,
+                    "capability_id": capability_id,
+                    "params": params,
+                    "goal_version": version,
+                },
             )
-        if not self._fresh(run, before):
-            return await self._reject(run, action, ExecutionStatus.REJECTED, "状态快照过期")
-        if decision.decision == PolicyDecision.REQUIRE_CONFIRMATION:
-            run.pending = PendingInteraction(
-                type="CONFIRMATION",
-                goal_version=version,
-                capability_id=capability_id,
-                params=dict(params),
-                expires_at=run.budget.deadline or now(),
-                question=f"确认执行 {capability_id} {params}",
+            if (
+                run.is_terminal()
+                or run.cancel_accepted
+                or version != run.task.goal_version
+                or run.environment_id != self.device.environment_id
+            ):
+                return await self._reject(
+                    run, action, ExecutionStatus.CANCELLED_BEFORE_DISPATCH, "过期目标、环境或已取消"
+                )
+            if run.in_flight_action_id or run.unresolved_unknown:
+                return await self._reject(run, action, ExecutionStatus.REJECTED, "另有在途或未知动作")
+            decision = self.policy.decide(run, capability_id, params)
+            await self.store.append_event(
+                run,
+                "POLICY",
+                {"action_id": action.action_id, "decision": decision.decision.value, "message": decision.message},
             )
-            run.lifecycle, run.phase = RunLifecycle.WAITING_CONFIRMATION, RunPhase.WAIT
-            await self.store.append_event(run, "WAIT_CONFIRMATION", run.pending.to_map())
-            return action
-        action.execution_status = ExecutionStatus.AUTHORIZED
-        await self.store.append_event(run, "AUTHORIZED", {"action_id": action.action_id})
-        action.expected_revisions, action.deadline = dict(before.domain_revisions), run.budget.deadline
-        run.budget.count_write()
-        run.budget.count_tool()
-        await self.store.append_event(
-            run, "ACTION_INTENT", {"action_id": action.action_id, "idempotency_key": action.idempotency_key}
-        )
-        action.execution_status, action.dispatched_at = ExecutionStatus.DISPATCHED, now()
-        run.in_flight_action_id = action.action_id
-        await self.store.append_event(
-            run,
-            "DISPATCH",
-            {"action_id": action.action_id, "capability_id": capability_id, "params": params, "goal_version": version},
-        )
+            if decision.decision == PolicyDecision.DENY:
+                return await self._reject(
+                    run, action, ExecutionStatus.REJECTED, decision.message or decision.code or "DENIED"
+                )
+            if not self._fresh(run, before):
+                return await self._reject(run, action, ExecutionStatus.REJECTED, "状态快照过期")
+            if decision.decision == PolicyDecision.REQUIRE_CONFIRMATION:
+                run.pending = PendingInteraction(
+                    type="CONFIRMATION",
+                    goal_version=version,
+                    capability_id=capability_id,
+                    params=dict(params),
+                    expires_at=run.budget.deadline or now(),
+                    question=f"确认执行 {capability_id} {params}",
+                )
+                run.lifecycle, run.phase = RunLifecycle.WAITING_CONFIRMATION, RunPhase.WAIT
+                await self.store.append_event(run, "WAIT_CONFIRMATION", run.pending.to_map())
+                return action
+            # Re-check cancel after awaits inside the critical section (append_event may yield).
+            if run.is_terminal() or run.cancel_accepted or version != run.task.goal_version:
+                return await self._reject(
+                    run, action, ExecutionStatus.CANCELLED_BEFORE_DISPATCH, "过期目标、环境或已取消"
+                )
+            action.execution_status = ExecutionStatus.AUTHORIZED
+            await self.store.append_event(run, "AUTHORIZED", {"action_id": action.action_id})
+            action.expected_revisions, action.deadline = dict(before.domain_revisions), run.budget.deadline
+            run.budget.count_write()
+            run.budget.count_tool()
+            await self.store.append_event(
+                run, "ACTION_INTENT", {"action_id": action.action_id, "idempotency_key": action.idempotency_key}
+            )
+            if run.is_terminal() or run.cancel_accepted or version != run.task.goal_version:
+                return await self._reject(
+                    run, action, ExecutionStatus.CANCELLED_BEFORE_DISPATCH, "过期目标、环境或已取消"
+                )
+            action.execution_status, action.dispatched_at = ExecutionStatus.DISPATCHED, now()
+            run.in_flight_action_id = action.action_id
+            await self.store.append_event(
+                run,
+                "DISPATCH",
+                {
+                    "action_id": action.action_id,
+                    "capability_id": capability_id,
+                    "params": params,
+                    "goal_version": version,
+                },
+            )
+
         try:
             record = await self.device.apply_write(
                 action.action_id,
@@ -145,15 +170,19 @@ class CapabilityExecutor:
                 run.run_id,
                 version,
             )
-            action.execution_status = ExecutionStatus.ACKNOWLEDGED
-            await self.store.append_event(run, "ACKNOWLEDGED", {"action_id": action.action_id})
-            await self._record(run, action, record)
+            async with self.store.run_lock(run.run_id):
+                action.execution_status = ExecutionStatus.ACKNOWLEDGED
+                await self.store.append_event(run, "ACKNOWLEDGED", {"action_id": action.action_id})
+                await self._record(run, action, record)
         except DeviceException as exc:
-            action.execution_status, action.message = ExecutionStatus.UNKNOWN, exc.code
-            run.unresolved_unknown = True
-            await self.store.append_event(
-                run, "TOOL_RESULT", {"action_id": action.action_id, "execution_status": "UNKNOWN", "code": exc.code}
-            )
+            async with self.store.run_lock(run.run_id):
+                action.execution_status, action.message = ExecutionStatus.UNKNOWN, exc.code
+                run.unresolved_unknown = True
+                await self.store.append_event(
+                    run,
+                    "TOOL_RESULT",
+                    {"action_id": action.action_id, "execution_status": "UNKNOWN", "code": exc.code},
+                )
         if action.execution_status == ExecutionStatus.UNKNOWN:
             for _ in range(4):
                 if action.execution_status != ExecutionStatus.UNKNOWN:
@@ -163,12 +192,15 @@ class CapabilityExecutor:
                     await self.device.tick()
                 await self.reconcile_unknown(run, action)
         await self._verify(run, action)
-        if action.execution_status != ExecutionStatus.UNKNOWN:
-            run.in_flight_action_id = None
-        run.unresolved_unknown = action.execution_status == ExecutionStatus.UNKNOWN
-        await self.store.append_event(
-            run, "ACTION_SETTLED", {"action_id": action.action_id, "execution_status": action.execution_status.value}
-        )
+        async with self.store.run_lock(run.run_id):
+            if action.execution_status != ExecutionStatus.UNKNOWN:
+                run.in_flight_action_id = None
+            run.unresolved_unknown = action.execution_status == ExecutionStatus.UNKNOWN
+            await self.store.append_event(
+                run,
+                "ACTION_SETTLED",
+                {"action_id": action.action_id, "execution_status": action.execution_status.value},
+            )
         return action
 
     async def _reject(self, run: RunRecord, action: ToolAction, status: ExecutionStatus, reason: str) -> ToolAction:
@@ -199,15 +231,17 @@ class CapabilityExecutor:
         )
 
     async def reconcile_unknown(self, run: RunRecord, action: ToolAction) -> None:
-        if not run.is_terminal():
-            run.budget.count_tool()
-        await self.store.append_event(run, "RECONCILE_ATTEMPT", {"action_id": action.action_id})
+        async with self.store.run_lock(run.run_id):
+            if not run.is_terminal():
+                run.budget.count_tool()
+            await self.store.append_event(run, "RECONCILE_ATTEMPT", {"action_id": action.action_id})
         record = await self.device.query_action(action.action_id)
-        if record is not None:
-            await self._record(run, action, record)
-        await self.store.append_event(
-            run, "RECONCILE", {"action_id": action.action_id, "execution_status": action.execution_status.value}
-        )
+        async with self.store.run_lock(run.run_id):
+            if record is not None:
+                await self._record(run, action, record)
+            await self.store.append_event(
+                run, "RECONCILE", {"action_id": action.action_id, "execution_status": action.execution_status.value}
+            )
 
     async def _verify(self, run: RunRecord, action: ToolAction) -> None:
         await self.store.append_event(run, "VERIFY_ATTEMPT", {"action_id": action.action_id})

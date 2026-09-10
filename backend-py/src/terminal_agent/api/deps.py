@@ -72,9 +72,7 @@ def build_model(settings: Settings, registry: CapabilityRegistry) -> tuple[Any, 
     mode = (settings.model_mode or "openai_compatible").lower()
     if mode == "fake":
         return FakeModelAdapter(), support_router, settings_router
-    model = OpenAiCompatibleModelAdapter(settings, model_router=settings_router, registry=None)
-    # OpenAI adapter expects capability.registry.CapabilityRegistry; pass None and let it
-    # construct its own, or pass core via a thin shim — adapter defaults to CapabilityRegistry().
+    model = OpenAiCompatibleModelAdapter(settings, model_router=settings_router, registry=registry)
     return model, support_router, settings_router
 
 
@@ -97,7 +95,9 @@ def build_app_state(settings: Settings | None = None) -> AppState:
     simulator = DeviceSimulator(registry)
     store = InMemoryRunStore(settings.event_log_dir)
     policy = PolicyEngine(registry, settings.require_confirmation)
-    executor = CapabilityExecutor(simulator, registry, policy, store)
+    executor = CapabilityExecutor(
+        simulator, registry, policy, store, fresh_window_ms=settings.fresh_window_ms
+    )
     verifier = Verifier(simulator)
     persistence = SqlitePersistence(
         store,

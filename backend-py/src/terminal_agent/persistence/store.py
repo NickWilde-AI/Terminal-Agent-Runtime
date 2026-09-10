@@ -21,6 +21,15 @@ class InMemoryRunStore:
         self._persistence: Callable[[RunRecord], Any] = lambda _: None
         self._listeners: list[Callable[[RuntimeEvent], Any]] = []
         self._lock = asyncio.Lock()
+        self._run_locks: dict[str, asyncio.Lock] = {}
+
+    def run_lock(self, run_id: str) -> asyncio.Lock:
+        """Per-run mutex aligned with Java synchronized(run)."""
+        lock = self._run_locks.get(run_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._run_locks[run_id] = lock
+        return lock
 
     def on_persist(self, sink: Callable[[RunRecord], Any]) -> None:
         self._persistence = sink
