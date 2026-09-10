@@ -28,6 +28,27 @@ data/
 *.war
 *.iml
 
+# Python / uv
+backend-py/.venv/
+backend-py/.mypy_cache/
+backend-py/.pytest_cache/
+backend-py/.ruff_cache/
+backend-py/**/__pycache__/
+backend-py/*.egg-info/
+backend-py/dist/
+backend-py/build/
+backend-py/.coverage
+backend-py/htmlcov/
+backend-py/data/
+backend-py/reports/
+backend-py/.env
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # Node / 前端
 web/node_modules/
 web/dist/
