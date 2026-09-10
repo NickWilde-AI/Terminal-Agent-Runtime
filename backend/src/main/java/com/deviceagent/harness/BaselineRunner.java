@@ -80,7 +80,8 @@ public class BaselineRunner {
 
         RouteType route = switch (candidate.routeHint == null ? "" : candidate.routeHint.toUpperCase()) {
             case "FAST" -> RouteType.FAST;
-            case "AGENT" -> RouteType.AGENT;
+            case "AGENT", "MULTI_AGENT" -> RouteType.MULTI_AGENT;
+            case "CHAT" -> RouteType.CHAT;
             case "REJECT" -> RouteType.REJECT;
             default -> RouteType.CLARIFY;
         };

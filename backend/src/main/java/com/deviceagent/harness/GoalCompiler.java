@@ -43,6 +43,13 @@ public final class GoalCompiler {
         String focus = preferUserSupplement(text);
         Set<String> intents = detectIntents(text, focus);
 
+        if (intents.isEmpty() && isChatOnly(text)) {
+            c.routeHint = "CHAT";
+            c.summary = chatReply(text);
+            c.raw.put("agent_role", "MAIN");
+            return c;
+        }
+
         if ((text.contains("别改当前") || text.contains("不要改当前") || text.contains("但别改"))
                 && !(focus.contains("允许") || focus.contains("保持不变") || focus.contains("改成"))) {
             c.routeHint = "CLARIFY";
@@ -205,11 +212,12 @@ public final class GoalCompiler {
 
         if (complex || intents.size() > 1 || text.contains("休息") || text.contains("舒服")
                 || (text.contains("导航") && (text.contains("没有声音") || text.contains("无声")))) {
-            c.routeHint = "AGENT";
+            c.routeHint = "MULTI_AGENT";
             bindComplex(text, observation, c, memoryHints, intents, temp);
             ensureCoverage(c, intents);
             if ("CLARIFY".equals(c.routeHint)) return c;
-            c.summary = c.summary == null ? "复杂/多域任务，进入 AGENT" : c.summary;
+            c.summary = c.summary == null ? "复杂/多域任务，进入 MULTI_AGENT" : c.summary;
+            c.raw.put("agent_role", "MAIN");
             ModelOutputNormalizer.normalize(c, text);
             return c;
         }
@@ -381,6 +389,29 @@ public final class GoalCompiler {
             c.summary = "目标覆盖不完整: " + missing;
             c.raw.put("coverage_missing", missing);
         }
+    }
+
+    static boolean isChatOnly(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = text.trim();
+        if (t.length() > 80) return false;
+        if (t.contains("度") || t.contains("空调") || t.contains("风量") || t.contains("车窗")
+                || t.contains("导航") || t.contains("媒体") || t.contains("音量") || t.contains("播放")
+                || t.contains("设为") || t.contains("打开") || t.contains("关闭") || t.contains("调")) {
+            return false;
+        }
+        return t.matches(".*(你好|您好|在吗|谢谢|早上好|晚上好|哈哈|天气|心情|聊天).*")
+                || t.equals("hi") || t.equalsIgnoreCase("hello") || t.length() <= 6;
+    }
+
+    static String chatReply(String text) {
+        if (text != null && (text.contains("谢谢") || text.contains("感谢"))) {
+            return "不客气。需要调空调、媒体或导航时直接说就行。";
+        }
+        if (text != null && (text.contains("天气") || text.contains("心情"))) {
+            return "我可以帮你控制座舱设备；天气和闲聊我只能简单回应，有具体设置再说一声。";
+        }
+        return "你好，我是终端 Agent Runtime。可以说「把空调设为 23 度」或描述一个多约束座舱目标。";
     }
 
     public static Set<String> detectIntents(String text, String focus) {

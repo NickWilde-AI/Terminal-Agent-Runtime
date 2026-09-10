@@ -16,7 +16,7 @@ class GoalCompilerCoverageTest {
                 null,
                 List.of()
         );
-        assertEquals("AGENT", c.routeHint);
+        assertEquals("MULTI_AGENT", c.routeHint);
         assertTrue(c.goals.stream().anyMatch(g -> "climate_power".equals(g.get("type"))));
         assertTrue(c.goals.stream().anyMatch(g -> "cabin_temperature".equals(g.get("type")) && Integer.valueOf(23).equals(((Number) g.get("value")).intValue())));
         assertTrue(c.goals.stream().anyMatch(g -> "window_position".equals(g.get("type")) && "front_left".equals(g.get("window"))));
@@ -32,7 +32,7 @@ class GoalCompilerCoverageTest {
                 null,
                 List.of()
         );
-        assertEquals("AGENT", c.routeHint);
+        assertEquals("MULTI_AGENT", c.routeHint);
         assertTrue(c.constraints.stream().anyMatch(x -> "no_window".equals(x.get("type"))));
         assertTrue(c.goals.stream().noneMatch(g -> "window_position".equals(g.get("type"))));
     }

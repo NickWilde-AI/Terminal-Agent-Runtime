@@ -1,7 +1,13 @@
 package com.deviceagent.model;
 
+import com.deviceagent.agent.MultiAgentSupport;
+import com.deviceagent.agent.PlanDraft;
+import com.deviceagent.agent.ReviewResult;
+import com.deviceagent.agent.TaskSpec;
 import com.deviceagent.capability.CapabilityRegistry;
 import com.deviceagent.config.DeviceAgentProperties;
+import com.deviceagent.domain.AgentRole;
+import com.deviceagent.domain.ReviewDecision;
 import com.deviceagent.domain.StateSnapshot;
 import com.deviceagent.harness.GoalCompiler;
 import com.deviceagent.harness.TaskBinder;
@@ -88,8 +94,8 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
     ) {
         ensureConfigured();
         String system = """
-                你是智能终端任务编译器。只输出 JSON，不要输出其它文字。
-                JSON 字段：routeHint(FAST|AGENT|CLARIFY|REJECT), clarifyQuestion, rejectReason, summary,
+                你是智能终端主 Agent（MAIN）。只输出 JSON，不要输出其它文字。
+                JSON 字段：routeHint(CHAT|FAST|MULTI_AGENT|CLARIFY|REJECT), clarifyQuestion, rejectReason, summary,
                 goals([{type,value,window?,position?,artist?,destination?}]), constraints([{type}]),
                 criteria([{template_id,params,required,source}]), fastAction({capability_id,params})。
                 硬性约定：
@@ -97,7 +103,7 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
                    media.play 用 {"artist"}；navigation.start 用 {"destination"}；pause/stop 用 {}。
                 2) goals.type：climate_power, cabin_temperature, cabin_fan, window_position, media_play,
                    media_pause, media_volume, nav_start, nav_stop, nav_prompt_enabled, nav_volume, nav_muted。
-                3) 多目标/多域/约束 → AGENT；单一明确写 → FAST；信息不足 → CLARIFY。
+                3) 纯聊天 → CHAT（summary 写回复）；多目标/多域/约束 → MULTI_AGENT；单一明确写 → FAST；信息不足 → CLARIFY。
                 4) 「不要开窗」是约束 no_window，不是拒绝开窗能力；用户明确开窗且无禁止约束时必须绑定 window_position。
                 5) 用户提到的每个显式子目标都必须进入 goals，禁止只编译温度而丢掉车窗/播放/导航。
                 允许能力：climate.set_power/set_temperature/set_fan, window.set_position,
@@ -204,6 +210,138 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
             // fall through to FINISH
         }
         return Map.of("decision", "FINISH", "reason", content.isBlank() ? "模型未提出新动作" : content, "model_raw", result.raw);
+    }
+
+    @Override
+    public void requestContext(String runId, com.deviceagent.domain.AgentRole role, int goalVersion, Instant deadline) {
+        String key = sessionKey(runId, role);
+        Session s = sessions.computeIfAbsent(key, id -> new Session());
+        s.goalVersion = goalVersion;
+        s.deadline = deadline;
+        s.role = role;
+    }
+
+    @Override
+    public PlanDraft planDraft(
+            String runId,
+            TaskSpec taskSpec,
+            StateSnapshot observation,
+            List<Map<String, Object>> priorActions,
+            List<String> reviseSuggestions,
+            int revisionRound
+    ) {
+        ensureConfigured();
+        String key = sessionKey(runId, AgentRole.PLANNER);
+        Session session = sessions.computeIfAbsent(key, id -> new Session());
+        session.role = AgentRole.PLANNER;
+        session.goalVersion = taskSpec.goalVersion;
+        if (session.messages.isEmpty()) {
+            session.messages.add(Map.of("role", "system", "content", """
+                    你是执行规划 Agent（PLANNER）。只输出 JSON PlanDraft，不要直接执行设备。
+                    字段：actions([{capability_id,params,reason}]), order([int]), preconditions([]),
+                    expected_effects([]), assumptions([string]), unresolved([string])。
+                    只能使用 TaskSpec.allowed_capabilities 内的能力；遵守 constraints；不要省略用户目标。
+                    """));
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("task_spec", taskSpec.toMap());
+        payload.put("observation", observation == null ? Map.of() : observation.getState());
+        payload.put("prior_actions", priorActions == null ? List.of() : priorActions);
+        payload.put("revise_suggestions", reviseSuggestions == null ? List.of() : reviseSuggestions);
+        payload.put("revision_round", revisionRound);
+        session.messages.add(Map.of("role", "user", "content", "请生成 PlanDraft JSON：\n" + safeJson(payload)));
+        String content = chatTextFromSession(session);
+        session.messages.add(Map.of("role", "assistant", "content", content));
+        try {
+            JsonNode node = objectMapper.readTree(extractJson(content));
+            PlanDraft draft = new PlanDraft();
+            draft.runId = runId;
+            draft.goalVersion = taskSpec.goalVersion;
+            draft.modelId = modelRouter.activeModelId();
+            draft.revisionRound = revisionRound;
+            draft.actions = listOfMaps(node.get("actions"));
+            draft.actions = draft.actions.stream().map(ModelOutputNormalizer::normalizeAction).toList();
+            if (node.has("order") && node.get("order").isArray()) {
+                node.get("order").forEach(n -> draft.order.add(n.asInt()));
+            } else {
+                for (int i = 0; i < draft.actions.size(); i++) draft.order.add(i);
+            }
+            draft.preconditions = listOfMaps(node.get("preconditions"));
+            draft.expectedEffects = listOfMaps(node.get("expected_effects"));
+            draft.assumptions = listOfStrings(node.get("assumptions"));
+            draft.unresolved = listOfStrings(node.get("unresolved"));
+            draft.raw.put("api_raw", content);
+            draft.raw.put("agent_role", "PLANNER");
+            return draft;
+        } catch (Exception ex) {
+            // Safe fallback: deterministic planner so Runtime still has a candidate
+            PlanDraft fallback = MultiAgentSupport.buildPlanDraft(
+                    taskSpec, observation, priorActions, revisionRound, modelRouter.activeModelId());
+            fallback.runId = runId;
+            fallback.raw.put("parse_fallback", ex.getMessage());
+            return fallback;
+        }
+    }
+
+    @Override
+    public ReviewResult reviewPlan(String runId, TaskSpec taskSpec, PlanDraft draft) {
+        ensureConfigured();
+        String key = sessionKey(runId, AgentRole.REVIEWER);
+        Session session = sessions.computeIfAbsent(key, id -> new Session());
+        session.role = AgentRole.REVIEWER;
+        session.goalVersion = taskSpec.goalVersion;
+        if (session.messages.isEmpty()) {
+            session.messages.add(Map.of("role", "system", "content", """
+                    你是方案审核 Agent（REVIEWER）。只输出 JSON ReviewResult，不能改设备，也不能宣告 COMPLETED。
+                    字段：decision(PASS|REVISE|REJECT), missing_goals([]), violated_constraints([]),
+                    risky_actions([]), evidence_gaps([]), suggestions([])。
+                    对照 TaskSpec 检查目标遗漏、约束冲突、多做/少做。
+                    """));
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("task_spec", taskSpec.toMap());
+        payload.put("plan_draft", draft.toMap());
+        session.messages.add(Map.of("role", "user", "content", "请审核：\n" + safeJson(payload)));
+        String content = chatTextFromSession(session);
+        session.messages.add(Map.of("role", "assistant", "content", content));
+        try {
+            JsonNode node = objectMapper.readTree(extractJson(content));
+            ReviewResult result = new ReviewResult();
+            result.runId = runId;
+            result.goalVersion = taskSpec.goalVersion;
+            result.modelId = modelRouter.activeModelId();
+            String d = text(node, "decision");
+            result.decision = d == null ? ReviewDecision.REJECT : ReviewDecision.valueOf(d.toUpperCase());
+            result.missingGoals = listOfStrings(node.get("missing_goals"));
+            result.violatedConstraints = listOfStrings(node.get("violated_constraints"));
+            result.riskyActions = listOfStrings(node.get("risky_actions"));
+            result.evidenceGaps = listOfStrings(node.get("evidence_gaps"));
+            result.suggestions = listOfStrings(node.get("suggestions"));
+            result.raw.put("api_raw", content);
+            result.raw.put("agent_role", "REVIEWER");
+            return result;
+        } catch (Exception ex) {
+            ReviewResult fallback = MultiAgentSupport.review(taskSpec, draft, modelRouter.activeModelId());
+            fallback.runId = runId;
+            fallback.raw.put("parse_fallback", ex.getMessage());
+            return fallback;
+        }
+    }
+
+    private String sessionKey(String runId, AgentRole role) {
+        return runId + "::" + (role == null ? AgentRole.MAIN : role).name();
+    }
+
+    private String chatTextFromSession(Session session) {
+        ChatResult r = chatWithTools(session.messages, null);
+        return r.content == null ? "" : r.content;
+    }
+
+    private List<String> listOfStrings(JsonNode node) {
+        if (node == null || !node.isArray()) return new ArrayList<>();
+        List<String> list = new ArrayList<>();
+        node.forEach(n -> list.add(n.asText()));
+        return list;
     }
 
     /** Only current-task capabilities plus state read; constraints can further shrink the whitelist. */
@@ -366,6 +504,7 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
         final List<Map<String, Object>> messages = new ArrayList<>();
         int goalVersion;
         Instant deadline;
+        AgentRole role = AgentRole.MAIN;
     }
 
     private static final class ChatResult {

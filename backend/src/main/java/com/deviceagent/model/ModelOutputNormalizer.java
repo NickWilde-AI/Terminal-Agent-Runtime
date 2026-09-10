@@ -56,23 +56,23 @@ public final class ModelOutputNormalizer {
         }
         String text = userText == null ? "" : userText;
         if (looksComplexRequest(text)) {
-            c.routeHint = "AGENT";
-            c.raw.put("route_corrected", "complex_request_force_agent");
+            c.routeHint = "MULTI_AGENT";
+            c.raw.put("route_corrected", "complex_request_force_multi_agent");
             return;
         }
         if (c.goals != null && c.goals.size() > 1) {
-            c.routeHint = "AGENT";
-            c.raw.put("route_corrected", "multi_goal_force_agent");
+            c.routeHint = "MULTI_AGENT";
+            c.raw.put("route_corrected", "multi_goal_force_multi_agent");
             return;
         }
         if (c.constraints != null && !c.constraints.isEmpty()) {
-            c.routeHint = "AGENT";
-            c.raw.put("route_corrected", "constraints_force_agent");
+            c.routeHint = "MULTI_AGENT";
+            c.raw.put("route_corrected", "constraints_force_multi_agent");
             return;
         }
         if (multiDomainGoals(c)) {
-            c.routeHint = "AGENT";
-            c.raw.put("route_corrected", "multi_domain_force_agent");
+            c.routeHint = "MULTI_AGENT";
+            c.raw.put("route_corrected", "multi_domain_force_multi_agent");
         }
     }
 
@@ -115,12 +115,13 @@ public final class ModelOutputNormalizer {
         Map<String, Object> out = new LinkedHashMap<>(action);
         Object cap = out.get("capability_id");
         if (cap == null) cap = out.get("capabilityId");
-        String capId = String.valueOf(cap).replace('_', '.');
-        // wire names climate_set_temperature → climate.set_temperature
-        if (capId.contains("_") && !capId.contains(".")) {
-            capId = String.valueOf(cap).replaceFirst("_", ".");
-            // media_set_volume already one underscore between domain and action pieces with multiple _
-            String raw = String.valueOf(cap);
+        String raw = String.valueOf(cap);
+        String capId;
+        // Already canonical domain.action — do not rewrite internal underscores in the action name.
+        if (raw.contains(".")) {
+            capId = raw;
+        } else {
+            capId = raw.replace('_', '.');
             if (raw.startsWith("climate_")) capId = "climate." + raw.substring("climate_".length());
             else if (raw.startsWith("cabin_")) capId = "climate." + raw.substring("cabin_".length());
             else if (raw.startsWith("media_")) capId = "media." + raw.substring("media_".length());

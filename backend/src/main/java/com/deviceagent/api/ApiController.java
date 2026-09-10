@@ -246,7 +246,9 @@ public class ApiController {
         m.put("persistence", properties.getPersistence());
         m.put("memory_enabled", true);
         m.put("sse_enabled", true);
-        m.put("disclaimer", "智能终端 Agent Runtime；本地默认设备模拟器联调，模型为阶跃 Step（OpenAI-compatible），端云共用 ModelPort。");
+        m.put("multi_agent", true);
+        m.put("agent_roles", List.of("MAIN", "PLANNER", "REVIEWER"));
+        m.put("disclaimer", "智能终端 Agent Runtime；本地默认设备模拟器联调，模型为阶跃 Step（OpenAI-compatible），端云共用 ModelPort。复杂任务走主 Agent / 规划 / 审核三角色，写设备仍只经 Runtime。");
         return m;
     }
 

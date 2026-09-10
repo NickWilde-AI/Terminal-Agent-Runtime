@@ -4,6 +4,15 @@
 
 内置演示域用于验证智能终端执行闭环；扩展新场景时，优先注册 Capability Schema 与 Device Adapter，无需改写主循环。
 
+演示域与简历四域的对应（脱敏泛化，不是实车接口）：
+
+| 简历能力域 | 仓内演示 |
+| --- | --- |
+| 车辆设置 | 环境域 `climate.*` / `window.*` |
+| 多媒体 | `media.*` |
+| 导航 | `navigation.*` |
+| 车辆状态 | 通用 `device.get_state` 回读 |
+
 ## 当前注册能力（capabilities-v2）
 
 | ID | 域 | 参数 | 说明 |

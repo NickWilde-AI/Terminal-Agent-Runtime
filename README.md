@@ -92,7 +92,9 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 | 模块 | 你能得到什么 |
 | --- | --- |
-| **路由** | 明确单目标走 `FAST`；跨域 / 约束 / 排查走 `AGENT`；信息不足 `CLARIFY`；越权 `REJECT` |
+| **路由** | 纯聊天 `CHAT`；明确单目标走 `FAST`（主 Agent 一次理解 / `DIRECT_ACTION`，不进规划审核）；跨域 / 约束走 `MULTI_AGENT`；信息不足 `CLARIFY`；越权 `REJECT` |
+| **三 Agent 协作** | 主 Agent（`TaskSpec`）→ 执行规划 Agent（`PlanDraft`）→ 方案审核 Agent（`PASS/REVISE/REJECT`）；写设备只经 Runtime/Policy；终态只由 Verifier 判定 |
+| **任务编译（Task Schema / GoalCompiler）** | 自然语言 → 目标 / 约束 / 完成条件（`goals` / `constraints` / `criteria`）；模型候选必须覆盖编译结果，见 `GoalCompilerCoverageTest` |
 | **有界执行循环** | Observe → Plan → Policy → Act → Verify；步数与时间预算有上限，避免空转 |
 | **三维证据** | `execution_status` / `verification_status` / `attribution` 分离；ACK ≠ APPLIED；数值碰巧相等 ≠ 本任务造成 |
 | **UNKNOWN 对账** | 响应丢失先读状态再决策，不盲目重发写动作 |

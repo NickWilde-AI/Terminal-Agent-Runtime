@@ -31,11 +31,12 @@ Terminal Agent Runtime（智能终端 Agent Runtime）面向智能终端提供 A
 
 | 模块 | 路径 | 职责 |
 | --- | --- | --- |
-| Harness / Runtime | `backend/.../harness` | 有界执行循环、版本、取消、验收 |
+| Harness / Runtime | `backend/.../harness` | 有界执行循环、版本、取消、验收；`GoalCompiler` 编译目标；`MULTI_AGENT` 路径串起规划/审核 |
+| Agent contracts | `backend/.../agent` | `TaskSpec` / `PlanDraft` / `ReviewResult` / `RouterDecision` |
 | DevicePort | `backend/.../device` | 设备适配边界；Harness / Policy / Verifier 不直接依赖 Simulator |
 | Policy | `backend/.../policy` | 白名单、约束、确认门禁 |
 | Memory | `backend/.../memory` | 上下文工程与受控长期记忆（本仓为 SQLite 规则版，不是 Milvus） |
-| ModelPort | `backend/.../model` | Step / OpenAI-compatible / Fake；规划走标准 Tool Calling |
+| ModelPort | `backend/.../model` | Step / OpenAI-compatible / Fake；`MAIN` / `PLANNER` / `REVIEWER` 独立 Session |
 | Simulator | `backend/.../simulator` | 本地 `DevicePort` 实现：设备真值与故障注入 |
 | Eval | `backend/.../eval` | 独立断言与报告 |
 | Web | `web/` | 联调工作台 |

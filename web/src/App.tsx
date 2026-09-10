@@ -606,12 +606,19 @@ export default function App() {
 
         <div style={{ marginTop: 12 }}>
           {events.length === 0 && <p className="muted">暂无事件</p>}
-          {events.map((e) => (
+          {events.map((e) => {
+            const role = e.payload && typeof e.payload === 'object'
+              ? (e.payload as Record<string, unknown>).agent_role
+              : undefined
+            return (
             <div className="event" key={e.seq}>
-              #{e.seq} {e.type} {e.actionId ? `· ${e.actionId}` : ''}
+              #{e.seq} {e.type}
+              {role ? ` · ${String(role)}` : ''}
+              {e.actionId ? ` · ${e.actionId}` : ''}
               <div>{JSON.stringify(e.payload)}</div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </details>
     </div>

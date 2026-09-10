@@ -93,7 +93,7 @@ class Phase1FastPathTest {
     void complexRestUsesAgent() {
         var run = harnessService.createRun("req-" + UUID.randomUUID(),
                 "后排要休息，把座舱调整舒服一点；媒体声音调低，但保留导航提示，不要开窗。", "test");
-        assertEquals("AGENT", run.getRouteType().name());
+        assertEquals("MULTI_AGENT", run.getRouteType().name());
         assertTrue(run.getLifecycle().name().equals("COMPLETED") || run.getLifecycle().name().equals("PARTIAL"));
         Map<String, Object> state = simulator.readState(null).getState();
         assertEquals(23, state.get("temperature_setpoint"));

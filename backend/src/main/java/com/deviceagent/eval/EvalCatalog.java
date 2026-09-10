@@ -192,7 +192,7 @@ public final class EvalCatalog {
     private static EvalCase c(String id, String req, boolean ok, Map<String, Object> init, Map<String, Object> fin) {
         EvalCase c = EvalCase.of(id, "complex", ok);
         c.request = req;
-        c.expectedRoute = "AGENT";
+        c.expectedRoute = "MULTI_AGENT";
         c.initialState = init;
         c.finalStateEquals = fin;
         c.allowedLifecycles = ok ? List.of("COMPLETED", "PARTIAL") : List.of("STOPPED", "FAILED", "PARTIAL");

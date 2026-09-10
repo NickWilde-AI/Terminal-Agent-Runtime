@@ -121,8 +121,14 @@ public class EvalRunner {
                     r.setLifecycle(RunLifecycle.CANCELLED);
                 }
             }
+            harnessService.awaitIdle(3_000);
             simulator.forceNewEnvironment();
-            simulator.resetToDefaults();
+            try {
+                simulator.resetToDefaults();
+            } catch (RuntimeException ex) {
+                simulator.forceNewEnvironment();
+                simulator.resetToDefaults();
+            }
             if (c.initialState != null) {
                 simulator.applyInitialState(c.initialState);
             }

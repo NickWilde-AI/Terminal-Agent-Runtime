@@ -28,8 +28,8 @@ class ModelOutputNormalizerTest {
         c.fastAction = Map.of("capability_id", "cabin.set_temperature", "params", Map.of("value", 23));
         c.goals = new ArrayList<>(List.of(Map.of("type", "cabin_temperature", "value", 23)));
         ModelOutputNormalizer.normalize(c, "休息一下，调舒服点，不要开窗，保留导航提示");
-        assertEquals("AGENT", c.routeHint);
-        assertEquals("complex_request_force_agent", c.raw.get("route_corrected"));
+        assertEquals("MULTI_AGENT", c.routeHint);
+        assertEquals("complex_request_force_multi_agent", c.raw.get("route_corrected"));
     }
 
     @Test
@@ -41,7 +41,7 @@ class ModelOutputNormalizerTest {
                 Map.of("type", "cabin_fan", "value", 1)
         ));
         ModelOutputNormalizer.normalize(c, "设温度和风量");
-        assertEquals("AGENT", c.routeHint);
+        assertEquals("MULTI_AGENT", c.routeHint);
         assertTrue(c.criteria.size() >= 2);
     }
 

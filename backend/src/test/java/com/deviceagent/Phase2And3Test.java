@@ -63,7 +63,7 @@ class Phase2And3Test {
         simulator.externalChange("navigation_muted", true);
         var run = harnessService.createRun("c08-" + UUID.randomUUID(),
                 "导航有画面但没有声音，帮我检查一下，不要重启车机。", "test");
-        assertEquals("AGENT", run.getRouteType().name());
+        assertEquals("MULTI_AGENT", run.getRouteType().name());
         assertEquals(false, simulator.readState(null).getState().get("navigation_muted"));
     }
 
