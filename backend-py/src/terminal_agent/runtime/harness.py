@@ -832,10 +832,10 @@ class HarnessService:
             "raw_text": run.task.raw_text,
             "goals": deepcopy(run.task.goals),
             "constraints": deepcopy(run.task.constraints),
-            "criteria": [c.model_dump(mode="json") for c in run.task.criteria],
+            "criteria": [_criterion_view(c) for c in run.task.criteria],
             "pending": run.pending.to_map() if run.pending else None,
             "budget": run.budget.to_map(),
-            "actions": [a.model_dump(mode="json") for a in run.actions],
+            "actions": [_action_view(a) for a in run.actions],
             "evaluation_snapshot": deepcopy(run.evaluation_snapshot),
             "model_mode": run.evaluation_snapshot.get("model_mode"),
             "model_id": run.evaluation_snapshot.get("model_id"),
@@ -845,3 +845,36 @@ class HarnessService:
             "event_count": len(run.events),
             "defaults_rule_id": self.settings.defaults_rule_id,
         }
+
+
+def _criterion_view(criterion: Any) -> dict[str, Any]:
+    data = criterion.model_dump(mode="json") if hasattr(criterion, "model_dump") else dict(criterion)
+    return {
+        **data,
+        "criterionId": data.get("criterion_id"),
+        "templateId": data.get("template_id"),
+        "sourceRef": data.get("source_ref"),
+        "baselineObservation": data.get("baseline_observation"),
+        "boundGoalVersion": data.get("bound_goal_version"),
+        "boundAt": data.get("bound_at"),
+    }
+
+
+def _action_view(action: Any) -> dict[str, Any]:
+    data = action.model_dump(mode="json") if hasattr(action, "model_dump") else dict(action)
+    return {
+        **data,
+        "actionId": data.get("action_id"),
+        "idempotencyKey": data.get("idempotency_key"),
+        "runId": data.get("run_id"),
+        "goalVersion": data.get("goal_version"),
+        "environmentId": data.get("environment_id"),
+        "capabilityId": data.get("capability_id"),
+        "expectedRevisions": data.get("expected_revisions"),
+        "preparedAt": data.get("prepared_at"),
+        "dispatchedAt": data.get("dispatched_at"),
+        "finishedAt": data.get("finished_at"),
+        "executionStatus": data.get("execution_status"),
+        "verificationStatus": data.get("verification_status"),
+        "retryOf": data.get("retry_of"),
+    }

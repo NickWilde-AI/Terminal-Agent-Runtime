@@ -170,6 +170,9 @@ def build_app_state(settings: Settings | None = None) -> AppState:
 
 
 def capability_to_map(definition: Any) -> dict[str, Any]:
+    if hasattr(definition, "to_map"):
+        return definition.to_map()
+    props = getattr(definition, "properties", {}) or {}
     return {
         "capability_id": definition.id,
         "version": CapabilityRegistry.VERSION,
@@ -178,8 +181,8 @@ def capability_to_map(definition: Any) -> dict[str, Any]:
         "domains": sorted(definition.domains),
         "schema": {
             "type": "object",
-            "properties": definition.properties,
-            "required": list(definition.properties.keys()),
+            "properties": props,
+            "required": list(props.keys()),
             "additionalProperties": False,
         },
     }

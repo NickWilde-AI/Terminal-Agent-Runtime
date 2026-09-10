@@ -6,21 +6,18 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
-from terminal_agent.capability.core import CapabilityRegistry, expected_effects
+from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.contracts import (
     AgentRole,
-    CompiledTaskCandidate,
-    Criterion,
     DeviceTask,
     PlanDraft,
     ReviewDecision,
     ReviewResult,
     StateSnapshot,
     TaskSpec,
-    now,
 )
+from terminal_agent.runtime.task_binder import TaskBinder
 from terminal_agent.runtime.task_binder import action_for as shared_action_for
-from terminal_agent.runtime.task_binder import action_params as shared_action_params
 
 
 class BudgetSettings(BaseModel):
@@ -116,82 +113,6 @@ class NullMemory:
         prior: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         return []
-
-
-class TaskBinder:
-    """Product-owned criteria binder. TODO: goal compilation remains owned by goal_compiler."""
-
-    def __init__(self, registry: CapabilityRegistry | None = None) -> None:
-        self.registry = registry or CapabilityRegistry()
-
-    def bind(self, run_id: str, text: str, defaults: str, candidate: CompiledTaskCandidate) -> DeviceTask:
-        task = DeviceTask(
-            run_id=run_id,
-            raw_text=text,
-            defaults_rule_id=defaults,
-            goals=list(candidate.goals),
-            constraints=list(candidate.constraints),
-        )
-        for goal in task.goals:
-            action = self.action_for(goal)
-            if action is None:
-                if goal.get("type") in ("nav_diagnostic", "media_keep_muted"):
-                    continue
-                raise ValueError(f"未注册目标类型: {goal.get('type')}")
-            cap = self.registry.canonical(str(action["capability_id"]))
-            params = self.params(action)
-            validation = self.registry.validate(cap, params)
-            if not validation.ok:
-                raise ValueError(validation.message)
-            expected = expected_effects(cap, params)
-            if expected:
-                for field, value in expected.items():
-                    self._add(task, "field_eq", {"field": field, "value": value}, str(goal.get("source", "user")))
-            else:
-                special = {
-                    "navigation.add_waypoint": ("nav_waypoint_contains", {"name": params.get("name")}),
-                    "navigation.remove_waypoint": ("nav_waypoint_absent", {"name": params.get("name")}),
-                    "navigation.query_eta": ("nav_query_type", {"type": "eta"}),
-                    "navigation.query_status": ("nav_query_type", {"type": "status"}),
-                    "navigation.query_waypoints": ("nav_query_type", {"type": "waypoints"}),
-                }.get(cap)
-                if not special:
-                    raise ValueError(f"无法为能力生成验收条件: {cap}")
-                self._add(task, special[0], special[1], str(goal.get("source", "user")))
-            if cap == "navigation.add_waypoint" and goal.get("retain_destination") is not None:
-                self._add(
-                    task, "field_eq", {"field": "navigation_destination", "value": goal["retain_destination"]}, "user"
-                )
-        for constraint in task.constraints:
-            if constraint.get("type") == "keep_navigation_prompt":
-                self._add(task, "nav_prompt_retained", {"min_volume": constraint.get("min_volume", 1)}, "user")
-        if any(c.get("template_id") == "nav_prompt_event_played" for c in candidate.criteria):
-            self._add(task, "nav_prompt_event_played", {}, "diagnostic contract")
-        if not task.criteria:
-            raise ValueError("没有可验收目标，需澄清")
-        task.binding_context["summary"] = candidate.summary
-        return task
-
-    @staticmethod
-    def _add(task: DeviceTask, template: str, params: dict[str, Any], source: str) -> None:
-        task.criteria.append(
-            Criterion(
-                criterion_id=f"c{len(task.criteria) + 1}",
-                template_id=template,
-                params=params,
-                source_ref=source,
-                bound_at=now(),
-                bound_goal_version=task.goal_version,
-            )
-        )
-
-    @staticmethod
-    def params(action: dict[str, Any]) -> dict[str, Any]:
-        return shared_action_params(action)
-
-    @staticmethod
-    def action_for(goal: dict[str, Any]) -> dict[str, Any] | None:
-        return shared_action_for(goal)
 
 
 def task_spec_from(task: DeviceTask, run_id: str, model_id: str) -> TaskSpec:

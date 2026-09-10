@@ -108,11 +108,12 @@ class DeviceSimulator:
         self._persistence = sink
 
     def start_clock(self) -> None:
-        """Mirror Java SimulatorBean: tick delayed actions ~every 50ms."""
+        """Mirror Java SimulatorBean: initialDelay≈100ms, then tick ~every 50ms."""
         if self._clock_task and not self._clock_task.done():
             return
 
         async def _loop() -> None:
+            await asyncio.sleep(0.1)
             while True:
                 try:
                     await self.tick()

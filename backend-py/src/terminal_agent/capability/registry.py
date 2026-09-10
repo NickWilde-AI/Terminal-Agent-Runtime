@@ -31,6 +31,7 @@ class ValidationResult:
 
 class CapabilityRegistry:
     WINDOWS = WINDOWS
+    VERSION = VERSION
 
     def __init__(self, modules: list[DomainModule] | None = None) -> None:
         self._capabilities: dict[str, CapabilityDefinition] = {}
@@ -73,6 +74,10 @@ class CapabilityRegistry:
         for module in modules:
             module.register(registrar)
             self._module_ids.append(module.id())
+
+    @property
+    def capabilities(self) -> dict[str, CapabilityDefinition]:
+        return self._capabilities
 
     @staticmethod
     def default_modules() -> list[DomainModule]:
