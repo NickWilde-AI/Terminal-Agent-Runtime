@@ -1,19 +1,3 @@
-<!--
-Sync Impact Report
-- Version change: (none) → 1.0.0
-- Modified principles: first ratification; no prior project-specific constitution
-- Added sections:
-  - Core Principles I–V
-  - 仓库与资料边界
-  - 质量门禁与工作流
-  - Governance
-- Removed sections: none
-- Deferred TODOs: none
-- Canonical local constitution (includes interview/private layering): private/docs/15-项目宪法.md
-- This file is the public, Spec Kit runtime copy. If private/docs/15-项目宪法.md exists, it supersedes this file.
-This HTML comment is temporary review scratch and should be removed before committing the amended constitution.
--->
-
 # Terminal Agent Runtime Constitution
 
 > **本机完整宪法（含 private 资料边界与面试分层）：** [`private/docs/15-项目宪法.md`](../../private/docs/15-项目宪法.md)
