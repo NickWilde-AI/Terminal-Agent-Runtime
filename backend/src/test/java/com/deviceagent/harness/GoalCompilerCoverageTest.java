@@ -36,4 +36,16 @@ class GoalCompilerCoverageTest {
         assertTrue(c.constraints.stream().anyMatch(x -> "no_window".equals(x.get("type"))));
         assertTrue(c.goals.stream().noneMatch(g -> "window_position".equals(g.get("type"))));
     }
+
+    @Test
+    void navigateWithWaypointBindsBothGoals() {
+        CompiledTaskCandidate c = GoalCompiler.compile(
+                "导航到东方明珠途经一个加油站",
+                null,
+                List.of()
+        );
+        assertEquals("MULTI_AGENT", c.routeHint);
+        assertTrue(c.goals.stream().anyMatch(g -> "nav_start".equals(g.get("type")) && "东方明珠".equals(g.get("destination"))));
+        assertTrue(c.goals.stream().anyMatch(g -> "nav_add_waypoint".equals(g.get("type")) && "加油站".equals(g.get("name"))));
+    }
 }

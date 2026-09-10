@@ -100,14 +100,17 @@ public class OpenAiCompatibleModelAdapter implements ModelPort {
                 criteria([{template_id,params,required,source}]), fastAction({capability_id,params})。
                 硬性约定：
                 1) 写动作 params：value 型用 {"value":...}；window.set_position 用 {"window","position"}；
-                   media.play 用 {"artist"}；navigation.start 用 {"destination"}；pause/stop 用 {}。
+                   media.play 用 {"artist"}；navigation.start 用 {"destination"}；
+                   navigation.add_waypoint/remove_waypoint 用 {"name"}；pause/stop/home/company/query_* 用 {}。
                 2) goals.type：climate_power, cabin_temperature, cabin_fan, window_position, media_play,
-                   media_pause, media_volume, nav_start, nav_stop, nav_prompt_enabled, nav_volume, nav_muted。
-                3) 纯聊天 → CHAT（summary 写回复）；多目标/多域/约束 → MULTI_AGENT；单一明确写 → FAST；信息不足 → CLARIFY。
+                   media_pause, media_volume, nav_start, nav_stop, nav_home, nav_company, nav_add_waypoint,
+                   nav_remove_waypoint, nav_preference, nav_pause, nav_resume, nav_query_eta, nav_query_status,
+                   nav_query_waypoints, nav_prompt_enabled, nav_volume, nav_muted。
+                3) 纯聊天 → CHAT（summary 写回复）；多目标/多域/约束/途经 → MULTI_AGENT；单一明确写 → FAST；信息不足 → CLARIFY。
                 4) 「不要开窗」是约束 no_window，不是拒绝开窗能力；用户明确开窗且无禁止约束时必须绑定 window_position。
                 5) 用户提到的每个显式子目标都必须进入 goals，禁止只编译温度而丢掉车窗/播放/导航。
-                允许能力：climate.set_power/set_temperature/set_fan, window.set_position,
-                media.play/pause/set_volume, navigation.start/stop/set_prompt_enabled/set_volume/set_muted,
+                6) 导航原则：明确目的地直接开航；途经不丢终点；search 失败诚实；「回家/去公司」若含途经/顺路则拆成收藏开航+途经，禁止只走收藏抢跑。
+                允许能力：climate.*, window.set_position, media.*, navigation.*（含途经/偏好/收藏/查询）, life.*（仅接口）,
                 device.get_state。
                 """;
         String user = "用户原话：" + userText

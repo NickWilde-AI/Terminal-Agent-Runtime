@@ -19,10 +19,10 @@ class FakeEvalGateTest {
     EvalRunner evalRunner;
 
     @Test
-    void fakeAgentEvalShouldPassAll40() {
+    void fakeAgentEvalShouldPassAllSeeds() {
         Map<String, Object> report = evalRunner.run("agent");
         assertEquals("fake", report.get("model_mode"));
-        assertEquals(40, report.get("total"));
+        assertEquals(52, report.get("total"));
         int failed = ((Number) report.get("failed")).intValue();
         if (failed > 0) {
             @SuppressWarnings("unchecked")
@@ -33,9 +33,9 @@ class FakeEvalGateTest {
                     sb.append(c.get("id")).append(": ").append(c.get("message")).append('\n');
                 }
             }
-            assertEquals(0, failed, "Fake 40 门禁失败:\n" + sb);
+            assertEquals(0, failed, "Fake 评测门禁失败:\n" + sb);
         }
         assertEquals(0, ((Number) report.get("false_success")).intValue());
-        assertTrue(((Number) report.get("passed")).intValue() >= 40);
+        assertTrue(((Number) report.get("passed")).intValue() >= 50);
     }
 }

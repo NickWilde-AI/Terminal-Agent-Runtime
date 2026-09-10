@@ -4,5 +4,6 @@ public enum DeviceDomain {
     CABIN,
     MEDIA,
     NAVIGATION,
-    AUDIO
+    AUDIO,
+    LIFE
 }

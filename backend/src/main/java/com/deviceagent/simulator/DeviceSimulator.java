@@ -41,8 +41,13 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
     private void defaults(){
         state.clear(); state.putAll(Ids.dict("climate_power",false,"temperature_setpoint",26,"cabin_temperature",27,"fan_level",3,
           "window_open",false,"media_volume",8,"media_muted",false,"media_playing",false,"media_track",null,"media_artist",null,
-          "navigation_active",true,"navigation_destination",null,"route_points",List.of(),"prompt_enabled",true,"navigation_volume",5,"navigation_muted",false,
-          "route_available",true,"focus_available",true,"last_prompt_event_id",null,"last_prompt_at",null,"last_prompt_result",null,"last_prompt_navigation_revision",0L));
+          "navigation_active",true,"navigation_destination",null,"navigation_paused",false,
+          "navigation_waypoints",new ArrayList<String>(),"navigation_preference","fastest",
+          "navigation_home","虹桥幸福里","navigation_company","陆家嘴办公楼",
+          "navigation_eta_minutes",null,"last_nav_query_type",null,"last_nav_query_result",null,
+          "route_points",List.of(),"prompt_enabled",true,"navigation_volume",5,"navigation_muted",false,
+          "route_available",true,"focus_available",true,"last_prompt_event_id",null,"last_prompt_at",null,"last_prompt_result",null,"last_prompt_navigation_revision",0L,
+          "life_session_active",false,"life_phase","idle","life_last_keyword",null,"life_last_shop",null,"life_last_item",null));
         CapabilityRegistry.WINDOWS.forEach(w -> state.put("window_"+w,0));
         for(var d:DeviceDomain.values()) revisions.put(d.name(),1L);
         origins.clear(); revision=1;
@@ -116,11 +121,195 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
     }
     private void apply(ActionRecord a){
         String invalid=precondition(a);if(invalid!=null){finish(a,"NOT_APPLIED",invalid);return;}
-        var updates=new LinkedHashMap<>(CapabilityEffects.expected(a.capabilityId,a.params));
-        if("media.play".equals(a.capabilityId)) updates.put("media_track","公开占位曲目 · 无音频");
-        if("navigation.start".equals(a.capabilityId)) updates.put("route_points",List.of(List.of(-2,0),List.of(-1,1),List.of(1,1),List.of(2,2)));
-        if("navigation.stop".equals(a.capabilityId)) updates.put("route_points",List.of());
+        String cap=registry.canonical(a.capabilityId);
+        String navFail=navigationPrecheck(cap,a.params);
+        if(navFail!=null){finish(a,"NOT_APPLIED",navFail);return;}
+        var updates=new LinkedHashMap<>(CapabilityEffects.expected(cap,a.params));
+        if("media.play".equals(cap)) updates.put("media_track","公开占位曲目 · 无音频");
+        applyNavigationEffects(cap,a.params,updates);
+        applyLifeEffects(cap,a.params,updates);
+        if(updates.isEmpty() && !cap.startsWith("navigation.query_") && !cap.startsWith("life.")) {
+            // keep expected empty only for unknown
+        }
         change(updates,"AGENT_ACTION",a);a.revision=revision;finish(a,"APPLIED","OK");
+    }
+
+    /** Known POIs for honest search; unknown destination → SEARCH_NO_CANDIDATE (no fake success). */
+    private static final Set<String> KNOWN_POIS = Set.of(
+            "东方明珠","虹桥机场","浦东机场","固安","星巴克","加油站","迪士尼",
+            "上海游泳馆","浦东美术馆","鼋头渚","灵山大佛","三凤桥","无锡国际会议中心",
+            "虹桥幸福里","陆家嘴办公楼");
+
+    private String navigationPrecheck(String cap, Map<String,Object> p){
+        return switch(cap){
+            case "navigation.start","navigation.set_route" -> {
+                String dest=String.valueOf(p.get("destination")).trim();
+                yield poiResolvable(dest)?null:"SEARCH_NO_CANDIDATE";
+            }
+            case "navigation.navigate_home" -> state.get("navigation_home")==null?"NEED_SET_HOME":null;
+            case "navigation.navigate_company" -> state.get("navigation_company")==null?"NEED_SET_COMPANY":null;
+            case "navigation.pause","navigation.resume" -> Boolean.TRUE.equals(state.get("navigation_active"))?null:"NOT_NAVIGATING";
+            case "navigation.add_waypoint" -> {
+                if(!Boolean.TRUE.equals(state.get("navigation_active")) || state.get("navigation_destination")==null)
+                    yield "NO_ACTIVE_DESTINATION";
+                String name=String.valueOf(p.get("name")).trim();
+                yield poiResolvable(name)?null:"SEARCH_NO_CANDIDATE";
+            }
+            case "navigation.remove_waypoint" -> {
+                if(!Boolean.TRUE.equals(state.get("navigation_active"))) yield "NOT_NAVIGATING";
+                Object wp=state.get("navigation_waypoints");
+                boolean has=wp instanceof List<?> list && list.contains(p.get("name"));
+                yield has?null:"WAYPOINT_NOT_FOUND";
+            }
+            default -> null;
+        };
+    }
+
+    private boolean poiResolvable(String name){
+        if(name==null || name.isBlank()) return false;
+        if(KNOWN_POIS.contains(name)) return true;
+        // allow favorite aliases and common category words already in KNOWN_POIS
+        Object home=state.get("navigation_home");
+        Object company=state.get("navigation_company");
+        return name.equals(home) || name.equals(company) || name.equals("家") || name.equals("公司");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyNavigationEffects(String cap, Map<String,Object> p, Map<String,Object> updates){
+        switch(cap){
+            case "navigation.start","navigation.set_route" -> {
+                updates.put("navigation_active",true);
+                updates.put("navigation_destination",p.get("destination"));
+                updates.put("navigation_paused",false);
+                updates.put("navigation_waypoints",new ArrayList<String>());
+                updates.put("route_points",List.of(List.of(-2,0),List.of(-1,1),List.of(1,1),List.of(2,2)));
+                updates.put("navigation_eta_minutes",etaMinutes(0));
+                clearNavQuery(updates);
+            }
+            case "navigation.stop","navigation.exit","navigation.nav_exit" -> {
+                updates.put("navigation_active",false);
+                updates.put("navigation_destination",null);
+                updates.put("navigation_paused",false);
+                updates.put("navigation_waypoints",new ArrayList<String>());
+                updates.put("route_points",List.of());
+                updates.put("navigation_eta_minutes",null);
+                clearNavQuery(updates);
+            }
+            case "navigation.pause" -> updates.put("navigation_paused",true);
+            case "navigation.resume" -> updates.put("navigation_paused",false);
+            case "navigation.add_waypoint" -> {
+                List<String> next=new ArrayList<>(waypointList());
+                String name=String.valueOf(p.get("name"));
+                if(!next.contains(name)) next.add(name);
+                updates.put("navigation_waypoints",next);
+                updates.put("navigation_eta_minutes",etaMinutes(next.size()));
+                // 途经不丢终点：destination 保持不变
+                updates.put("navigation_destination",state.get("navigation_destination"));
+                updates.put("navigation_active",true);
+            }
+            case "navigation.remove_waypoint" -> {
+                List<String> next=new ArrayList<>(waypointList());
+                next.remove(String.valueOf(p.get("name")));
+                updates.put("navigation_waypoints",next);
+                updates.put("navigation_eta_minutes",etaMinutes(next.size()));
+                updates.put("navigation_destination",state.get("navigation_destination"));
+                updates.put("navigation_active",true);
+            }
+            case "navigation.navigate_home" -> {
+                Object home=state.get("navigation_home");
+                updates.put("navigation_active",true);
+                updates.put("navigation_destination",home);
+                updates.put("navigation_paused",false);
+                updates.put("navigation_waypoints",new ArrayList<String>());
+                updates.put("route_points",List.of(List.of(-2,0),List.of(0,1),List.of(2,2)));
+                updates.put("navigation_eta_minutes",etaMinutes(0));
+                clearNavQuery(updates);
+            }
+            case "navigation.navigate_company" -> {
+                Object company=state.get("navigation_company");
+                updates.put("navigation_active",true);
+                updates.put("navigation_destination",company);
+                updates.put("navigation_paused",false);
+                updates.put("navigation_waypoints",new ArrayList<String>());
+                updates.put("route_points",List.of(List.of(-1,0),List.of(1,1),List.of(2,0)));
+                updates.put("navigation_eta_minutes",etaMinutes(0));
+                clearNavQuery(updates);
+            }
+            case "navigation.query_eta" -> {
+                boolean active=Boolean.TRUE.equals(state.get("navigation_active"));
+                updates.put("last_nav_query_type","eta");
+                updates.put("last_nav_query_result", active
+                        ? "预计剩余 "+state.getOrDefault("navigation_eta_minutes",15)+" 分钟到达 "+state.get("navigation_destination")
+                        : "当前未在导航中，无法提供 ETA");
+            }
+            case "navigation.query_status" -> {
+                boolean active=Boolean.TRUE.equals(state.get("navigation_active"));
+                updates.put("last_nav_query_type","status");
+                updates.put("last_nav_query_result", active
+                        ? "导航中，目的地 "+state.get("navigation_destination")
+                          +(Boolean.TRUE.equals(state.get("navigation_paused"))?"（已暂停）":"")
+                          +"，偏好 "+state.get("navigation_preference")
+                        : "当前未在导航");
+            }
+            case "navigation.query_waypoints" -> {
+                updates.put("last_nav_query_type","waypoints");
+                List<String> wps=waypointList();
+                updates.put("last_nav_query_result", wps.isEmpty() ? "当前无途经点" : "途经点："+String.join("、", wps));
+            }
+            default -> {}
+        }
+    }
+
+    private void applyLifeEffects(String cap, Map<String,Object> p, Map<String,Object> updates){
+        switch(cap){
+            case "life.search_shops" -> {
+                updates.put("life_session_active",true);
+                updates.put("life_phase","shop_list");
+                updates.put("life_last_keyword",p.get("keyword"));
+            }
+            case "life.enter_shop" -> {
+                updates.put("life_session_active",true);
+                updates.put("life_phase","in_shop");
+                updates.put("life_last_shop",p.get("shop_name"));
+            }
+            case "life.add_to_cart" -> {
+                updates.put("life_session_active",true);
+                updates.put("life_phase","in_shop");
+                updates.put("life_last_item",p.get("item"));
+            }
+            case "life.go_to_checkout" -> {
+                updates.put("life_session_active",true);
+                updates.put("life_phase","checkout");
+            }
+            case "life.close" -> {
+                updates.put("life_session_active",false);
+                updates.put("life_phase","idle");
+                updates.put("life_last_keyword",null);
+                updates.put("life_last_shop",null);
+                updates.put("life_last_item",null);
+            }
+            default -> {}
+        }
+    }
+
+    private void clearNavQuery(Map<String,Object> updates){
+        updates.put("last_nav_query_type",null);
+        updates.put("last_nav_query_result",null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> waypointList(){
+        Object wp=state.get("navigation_waypoints");
+        if(wp instanceof List<?> list){
+            List<String> out=new ArrayList<>();
+            for(Object o:list) out.add(String.valueOf(o));
+            return out;
+        }
+        return new ArrayList<>();
+    }
+
+    private int etaMinutes(int waypointCount){
+        return 12 + waypointCount * 8;
     }
     public synchronized ActionRecord queryAction(String id){return actionsById.get(id);}
     /** Environment clock advances queued commands and prompt events, never the Harness verifier. */
@@ -141,8 +330,16 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
         Object old=state.get(field);
         if(old instanceof Boolean && !(value instanceof Boolean)) throw new IllegalArgumentException("boolean required");
         if(old instanceof Number && !(value instanceof Number)) throw new IllegalArgumentException("number required");
-        if(value instanceof Number n){int min=0,max=10;if(field.startsWith("window_"))max=100; if(field.equals("temperature_setpoint")){min=16;max=30;}if(field.equals("cabin_temperature")){min=-30;max=70;}if(field.equals("fan_level"))max=3;
-            if(!field.startsWith("last_")&&(n.doubleValue()!=n.intValue()||n.intValue()<min||n.intValue()>max))throw new IllegalArgumentException("field out of range");}
+        if(value instanceof Number n){
+            int min=0,max=10;
+            if(field.startsWith("window_")) max=100;
+            if(field.equals("temperature_setpoint")){min=16;max=30;}
+            if(field.equals("cabin_temperature")){min=-30;max=70;}
+            if(field.equals("fan_level")) max=3;
+            if(field.equals("navigation_eta_minutes")){min=0;max=600;}
+            if(!field.startsWith("last_")&&(n.doubleValue()!=n.intValue()||n.intValue()<min||n.intValue()>max))
+                throw new IllegalArgumentException("field out of range");
+        }
         Map<String,Object> updates=Ids.dict(field,value);
         if("window_open".equals(field)) CapabilityRegistry.WINDOWS.forEach(w->updates.put("window_"+w,Boolean.TRUE.equals(value)?100:0));
         change(updates,"EXTERNAL",null);commit();
@@ -156,7 +353,14 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
         state.put("window_open",CapabilityRegistry.WINDOWS.stream().anyMatch(w -> ((Number)state.get("window_"+w)).intValue()>0));
         touched.forEach(d->revisions.merge(d,1L,Long::sum));
     }
-    private String domain(String field){return field.startsWith("media_")?"MEDIA":field.startsWith("last_")||field.equals("route_available")||field.equals("focus_available")?"AUDIO":field.startsWith("navigation_")||field.equals("prompt_enabled")||field.equals("route_points")?"NAVIGATION":"CABIN";}
+    private String domain(String field){
+        if(field.startsWith("media_")) return "MEDIA";
+        if(field.startsWith("life_")) return "LIFE";
+        if(field.startsWith("last_")||field.equals("route_available")||field.equals("focus_available")) return "AUDIO";
+        if(field.startsWith("navigation_")||field.equals("prompt_enabled")||field.equals("route_points")
+                ||field.equals("last_nav_query_type")||field.equals("last_nav_query_result")) return "NAVIGATION";
+        return "CABIN";
+    }
     private ActionRecord finish(ActionRecord a,String status,String msg){a.status=status;a.message=msg;a.finishedAt=Ids.now();commit();return a;}
     private void commit(){
         persistence.accept(exportState());
@@ -177,6 +381,24 @@ public class DeviceSimulator implements com.deviceagent.device.DevicePort {
         return Ids.dict("device_id",getDeviceId(),"environment_id",environmentId,"revision",revision,"observed_at",s.getObservedAt(),"domain_revisions",s.getDomainRevisions(),"origins",s.getOrigins(),"state",s.getState(),"simulation",true,
           "climate",Ids.dict("power",state.get("climate_power"),"setpoint",state.get("temperature_setpoint"),"cabin_temperature",state.get("cabin_temperature"),"fan_level",state.get("fan_level")),"windows",windows,
           "media",Ids.dict("playing",state.get("media_playing"),"track",state.get("media_track"),"artist",state.get("media_artist"),"volume",state.get("media_volume")),
-          "navigation",Ids.dict("active",state.get("navigation_active"),"destination",state.get("navigation_destination"),"prompt_enabled",state.get("prompt_enabled"),"volume",state.get("navigation_volume"),"route_points",state.get("route_points")));
+          "navigation",Ids.dict(
+                  "active",state.get("navigation_active"),
+                  "destination",state.get("navigation_destination"),
+                  "paused",state.get("navigation_paused"),
+                  "waypoints",state.get("navigation_waypoints"),
+                  "preference",state.get("navigation_preference"),
+                  "eta_minutes",state.get("navigation_eta_minutes"),
+                  "home",state.get("navigation_home"),
+                  "company",state.get("navigation_company"),
+                  "prompt_enabled",state.get("prompt_enabled"),
+                  "volume",state.get("navigation_volume"),
+                  "route_points",state.get("route_points"),
+                  "last_query",state.get("last_nav_query_result")),
+          "life",Ids.dict(
+                  "session_active",state.get("life_session_active"),
+                  "phase",state.get("life_phase"),
+                  "last_keyword",state.get("life_last_keyword"),
+                  "last_shop",state.get("life_last_shop"),
+                  "last_item",state.get("life_last_item")));
     }
 }

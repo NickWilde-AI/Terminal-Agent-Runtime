@@ -32,6 +32,9 @@ public class Verifier {
             case "media_volume_eq" -> CapabilityEffects.eq(m.get("media_volume"),p.get("value"));
             case "nav_prompt_retained" -> Boolean.TRUE.equals(m.get("navigation_active"))&&Boolean.TRUE.equals(m.get("prompt_enabled"))&&!Boolean.TRUE.equals(m.get("navigation_muted"))&&Boolean.TRUE.equals(m.get("route_available"))&&Boolean.TRUE.equals(m.get("focus_available"))&&((Number)m.get("navigation_volume")).intValue()>=((Number)p.getOrDefault("min_volume",1)).intValue();
             case "nav_prompt_event_played" -> "PLAYED".equals(m.get("last_prompt_result"))&&m.get("last_prompt_at")!=null&&c.getBoundAt()!=null&&Instant.parse(m.get("last_prompt_at").toString()).isAfter(c.getBoundAt())&&CapabilityEffects.eq(m.get("last_prompt_navigation_revision"),s.getDomainRevisions().get("NAVIGATION"));
+            case "nav_waypoint_contains" -> m.get("navigation_waypoints") instanceof java.util.List<?> list && list.contains(p.get("name"));
+            case "nav_waypoint_absent" -> !(m.get("navigation_waypoints") instanceof java.util.List<?> list && list.contains(p.get("name")));
+            case "nav_query_type" -> Objects.equals(m.get("last_nav_query_type"), p.get("type"));
             default -> false;
         };
     }
@@ -56,7 +59,14 @@ public class Verifier {
         }
         if(Boolean.TRUE.equals(st.get("navigation_active"))) {
             sb.append("。导航进行中 → ").append(st.getOrDefault("navigation_destination","—"));
+            Object wps=st.get("navigation_waypoints");
+            if(wps instanceof java.util.List<?> list && !list.isEmpty()) sb.append("，途经 ").append(list);
+            if(Boolean.TRUE.equals(st.get("navigation_paused"))) sb.append("（已暂停）");
+            if(st.get("navigation_eta_minutes")!=null) sb.append("，ETA ").append(st.get("navigation_eta_minutes")).append(" 分钟");
             sb.append("（播报开关开启≠用户已听到声音）");
+        }
+        if(st.get("last_nav_query_result")!=null) {
+            sb.append("。最近查询：").append(st.get("last_nav_query_result"));
         }
         sb.append("。以上为本地模拟器状态，不代表真实设备。");
         return sb.toString();

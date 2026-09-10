@@ -19,9 +19,26 @@ public class TaskBinder {
                 if("nav_diagnostic".equals(g.get("type"))||"media_keep_muted".equals(g.get("type"))) continue;
                 throw new IllegalArgumentException("未注册目标类型: "+g.get("type"));
             }
-            String cap=(String)action.get("capability_id");Map<String,Object> p=params(action);
+            String cap=registry.canonical((String)action.get("capability_id"));Map<String,Object> p=params(action);
             var v=registry.validate(cap,p);if(!v.ok())throw new IllegalArgumentException(v.message());
-            for(var e:CapabilityEffects.expected(cap,p).entrySet()) add(t,"field_eq",Ids.dict("field",e.getKey(),"value",e.getValue()),String.valueOf(g.getOrDefault("source","user")));
+            var expected=CapabilityEffects.expected(cap,p);
+            if(expected.isEmpty()){
+                String src=String.valueOf(g.getOrDefault("source","user"));
+                switch(cap){
+                    case "navigation.add_waypoint" -> add(t,"nav_waypoint_contains",Ids.dict("name",p.get("name")),src);
+                    case "navigation.remove_waypoint" -> add(t,"nav_waypoint_absent",Ids.dict("name",p.get("name")),src);
+                    case "navigation.query_eta" -> add(t,"nav_query_type",Ids.dict("type","eta"),src);
+                    case "navigation.query_status" -> add(t,"nav_query_type",Ids.dict("type","status"),src);
+                    case "navigation.query_waypoints" -> add(t,"nav_query_type",Ids.dict("type","waypoints"),src);
+                    default -> throw new IllegalArgumentException("无法为能力生成验收条件: "+cap);
+                }
+            } else {
+                for(var e:expected.entrySet()) add(t,"field_eq",Ids.dict("field",e.getKey(),"value",e.getValue()),String.valueOf(g.getOrDefault("source","user")));
+            }
+            // 途经不丢终点：追加途经时额外验收终点仍在
+            if("navigation.add_waypoint".equals(cap) && g.get("retain_destination")!=null){
+                add(t,"field_eq",Ids.dict("field","navigation_destination","value",g.get("retain_destination")),"user");
+            }
         }
         for(var c:t.getConstraints()) if("keep_navigation_prompt".equals(c.get("type"))) add(t,"nav_prompt_retained",Ids.dict("min_volume",c.getOrDefault("min_volume",1)),"user");
         // Audio diagnostic has a fixed product predicate, never a model-defined expression.
@@ -44,9 +61,23 @@ public class TaskBinder {
             case "media_volume" -> Ids.dict("capability_id","media.set_volume","params",Ids.dict("value",g.get("value")));
             case "nav_start" -> Ids.dict("capability_id","navigation.start","params",Ids.dict("destination",g.get("destination")));
             case "nav_stop" -> Ids.dict("capability_id","navigation.stop","params",Map.of());
+            case "nav_pause" -> Ids.dict("capability_id","navigation.pause","params",Map.of());
+            case "nav_resume" -> Ids.dict("capability_id","navigation.resume","params",Map.of());
+            case "nav_add_waypoint" -> Ids.dict("capability_id","navigation.add_waypoint","params",Ids.dict("name",g.get("name")));
+            case "nav_remove_waypoint" -> Ids.dict("capability_id","navigation.remove_waypoint","params",Ids.dict("name",g.get("name")));
+            case "nav_preference" -> Ids.dict("capability_id","navigation.set_preference","params",Ids.dict("value",g.get("value")));
+            case "nav_home" -> Ids.dict("capability_id","navigation.navigate_home","params",Map.of());
+            case "nav_company" -> Ids.dict("capability_id","navigation.navigate_company","params",Map.of());
+            case "nav_set_home" -> Ids.dict("capability_id","navigation.set_home","params",Ids.dict("place",g.get("place")));
+            case "nav_set_company" -> Ids.dict("capability_id","navigation.set_company","params",Ids.dict("place",g.get("place")));
+            case "nav_query_eta" -> Ids.dict("capability_id","navigation.query_eta","params",Map.of());
+            case "nav_query_status" -> Ids.dict("capability_id","navigation.query_status","params",Map.of());
+            case "nav_query_waypoints" -> Ids.dict("capability_id","navigation.query_waypoints","params",Map.of());
             case "nav_prompt_enabled" -> Ids.dict("capability_id","navigation.set_prompt_enabled","params",Ids.dict("value",g.get("value")));
             case "nav_volume" -> Ids.dict("capability_id","navigation.set_volume","params",Ids.dict("value",g.get("value")));
             case "nav_muted" -> Ids.dict("capability_id","navigation.set_muted","params",Ids.dict("value",g.get("value")));
+            case "life_search_shops" -> Ids.dict("capability_id","life.search_shops","params",Ids.dict("keyword",g.get("keyword")));
+            case "life_close" -> Ids.dict("capability_id","life.close","params",Map.of());
             default -> null;
         };
     }

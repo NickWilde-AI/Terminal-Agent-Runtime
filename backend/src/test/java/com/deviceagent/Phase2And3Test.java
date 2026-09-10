@@ -120,8 +120,8 @@ class Phase2And3Test {
         Map<String, Object> report = evalRunner.run("agent");
         int total = ((Number) report.get("total")).intValue();
         int passed = ((Number) report.get("passed")).intValue();
-        assertEquals(40, total);
-        assertTrue(passed >= 28, "expected most seeds to pass, passed=" + passed + " report=" + report.get("cases"));
+        assertEquals(52, total);
+        assertTrue(passed >= 38, "expected most seeds to pass, passed=" + passed + " report=" + report.get("cases"));
         assertEquals(0, ((Number) report.get("false_success")).intValue());
     }
 }

@@ -133,6 +133,49 @@ public final class MultiAgentSupport {
                 if (Boolean.TRUE.equals(state.get("navigation_active"))) {
                     action = act("navigation.stop", Map.of(), "导航停止");
                 } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_home".equals(type)) {
+                Object home = state.get("navigation_home");
+                boolean active = Boolean.TRUE.equals(state.get("navigation_active"));
+                if (!active || !Objects.equals(home, state.get("navigation_destination"))) {
+                    action = act("navigation.navigate_home", Map.of(), "导航回家");
+                } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_company".equals(type)) {
+                Object company = state.get("navigation_company");
+                boolean active = Boolean.TRUE.equals(state.get("navigation_active"));
+                if (!active || !Objects.equals(company, state.get("navigation_destination"))) {
+                    action = act("navigation.navigate_company", Map.of(), "导航去公司");
+                } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_add_waypoint".equals(type)) {
+                String name = String.valueOf(goal.get("name"));
+                Object wp = state.get("navigation_waypoints");
+                boolean has = wp instanceof List<?> list && list.contains(name);
+                if (!has) action = act("navigation.add_waypoint", Map.of("name", name), "追加途经点");
+                else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_remove_waypoint".equals(type)) {
+                String name = String.valueOf(goal.get("name"));
+                Object wp = state.get("navigation_waypoints");
+                boolean has = wp instanceof List<?> list && list.contains(name);
+                if (has) action = act("navigation.remove_waypoint", Map.of("name", name), "删除途经点");
+                else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_preference".equals(type)) {
+                String pref = String.valueOf(goal.get("value"));
+                if (!pref.equals(String.valueOf(state.getOrDefault("navigation_preference", "")))) {
+                    action = act("navigation.set_preference", Map.of("value", pref), "路线偏好");
+                } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_pause".equals(type)) {
+                if (!Boolean.TRUE.equals(state.get("navigation_paused"))) {
+                    action = act("navigation.pause", Map.of(), "暂停导航");
+                } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_resume".equals(type)) {
+                if (Boolean.TRUE.equals(state.get("navigation_paused"))) {
+                    action = act("navigation.resume", Map.of(), "继续导航");
+                } else draft.assumptions.add(type + " already satisfied");
+            } else if ("nav_query_eta".equals(type)) {
+                action = act("navigation.query_eta", Map.of(), "查询ETA");
+            } else if ("nav_query_status".equals(type)) {
+                action = act("navigation.query_status", Map.of(), "查询导航状态");
+            } else if ("nav_query_waypoints".equals(type)) {
+                action = act("navigation.query_waypoints", Map.of(), "查询途经点");
             } else if ("nav_prompt_enabled".equals(type)) {
                 boolean target = Boolean.TRUE.equals(goal.get("value"));
                 if (!Objects.equals(Boolean.TRUE.equals(state.get("prompt_enabled")), target)) {

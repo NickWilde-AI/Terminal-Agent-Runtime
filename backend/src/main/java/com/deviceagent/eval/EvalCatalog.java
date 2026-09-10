@@ -172,6 +172,49 @@ public final class EvalCatalog {
         i06.allowedLifecycles = List.of("TIMED_OUT", "STOPPED");
         list.add(i06);
 
+        // N01-N12 出行导航可信执行（对齐场景化导航原则）
+        list.add(q("N01", "导航到东方明珠", "FAST", true, Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "东方明珠"), "navigation.start"));
+        list.add(q("N02", "去虹桥机场", "FAST", true, Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "虹桥机场"), "navigation.start"));
+        EvalCase n03 = q("N03", "导航到火星基地999", "FAST", false, Map.of("navigation_active", false),
+                Map.of("navigation_active", false), null);
+        n03.allowedLifecycles = List.of("FAILED", "PARTIAL", "STOPPED");
+        list.add(n03);
+        list.add(q("N04", "导航回家", "FAST", true, Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "虹桥幸福里"), "navigation.navigate_home"));
+        list.add(q("N05", "去公司", "FAST", true, Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "陆家嘴办公楼"), "navigation.navigate_company"));
+        list.add(c("N06", "导航到东方明珠途经一个加油站", true,
+                Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "东方明珠",
+                        "navigation_waypoints", List.of("加油站"))));
+        list.add(c("N07", "回家途经加油站", true,
+                Map.of("navigation_active", false),
+                Map.of("navigation_active", true, "navigation_destination", "虹桥幸福里",
+                        "navigation_waypoints", List.of("加油站"))));
+        list.add(q("N08", "加个途经点星巴克", "FAST", true,
+                Map.of("navigation_active", true, "navigation_destination", "虹桥机场",
+                        "navigation_waypoints", List.of()),
+                Map.of("navigation_active", true, "navigation_destination", "虹桥机场",
+                        "navigation_waypoints", List.of("星巴克")),
+                "navigation.add_waypoint"));
+        EvalCase n09 = q("N09", "加个途经点星巴克", "CLARIFY", false,
+                Map.of("navigation_active", true),
+                Map.of(), null);
+        n09.initialState = new java.util.LinkedHashMap<>(Map.of("navigation_active", true));
+        n09.initialState.put("navigation_destination", null);
+        n09.allowedLifecycles = List.of("WAITING_CLARIFICATION", "FAILED", "STOPPED");
+        list.add(n09);
+        list.add(q("N10", "不走高速", "FAST", true, Map.of(),
+                Map.of("navigation_preference", "avoid_highway"), "navigation.set_preference"));
+        list.add(q("N11", "还有多久到", "FAST", true,
+                Map.of("navigation_active", true, "navigation_destination", "东方明珠", "navigation_eta_minutes", 15),
+                Map.of("last_nav_query_type", "eta"), "navigation.query_eta"));
+        list.add(q("N12", "结束导航", "FAST", true,
+                Map.of("navigation_active", true, "navigation_destination", "东方明珠"),
+                Map.of("navigation_active", false), "navigation.stop"));
+
         return list;
     }
 

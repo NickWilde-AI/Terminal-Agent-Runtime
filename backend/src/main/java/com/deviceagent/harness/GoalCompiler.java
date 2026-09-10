@@ -25,7 +25,10 @@ public final class GoalCompiler {
     private static final Pattern WINDOW_POS = Pattern.compile(
             "(?:(左前|右前|左后|右后|前排左|前排右|后排左|后排右|全部|所有)?\\s*车窗|(?:打开|开)\\s*(左前|右前|左后|右后)?\\s*(?:车窗|窗)).*?(?:一半|(\\d{1,3})\\s*%?)?");
     private static final Pattern PLAY = Pattern.compile("播放\\s*([\\u4e00-\\u9fa5A-Za-z0-9·•\\- ]{1,40})");
-    private static final Pattern NAV_TO = Pattern.compile("导航(?:到|去)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})");
+    private static final Pattern NAV_TO = Pattern.compile("(?:导航(?:到|去)|去)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})");
+    private static final Pattern WAYPOINT = Pattern.compile("(?:途经|顺便|顺路)(?:一个|家|去)?\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})");
+    private static final Pattern ADD_WAYPOINT = Pattern.compile("(?:加(?:个|一个)?途经点|途经点)\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})");
+    private static final Pattern REMOVE_WAYPOINT = Pattern.compile("(?:删除|去掉|取消)途经点\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,40})");
 
     private GoalCompiler() {}
 
@@ -83,7 +86,8 @@ public final class GoalCompiler {
 
         boolean complex = isComplex(text) || intents.size() > 1
                 || text.contains("休息") || text.contains("舒服")
-                || (text.contains("导航") && (text.contains("没有声音") || text.contains("无声")));
+                || (text.contains("导航") && (text.contains("没有声音") || text.contains("无声")))
+                || intents.contains("nav_add_waypoint") && (intents.contains("nav_start") || intents.contains("nav_home") || intents.contains("nav_company"));
 
         if (!complex && intents.size() == 1) {
             if (intents.contains("temperature") && temp != null && looksLikeSimpleSet(focus + text)) {
@@ -192,11 +196,113 @@ public final class GoalCompiler {
                 ensureCoverage(c, intents);
                 return c;
             }
+            if (intents.contains("nav_home")) {
+                addGoal(c, "nav_home", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.navigate_home", "params", Map.of());
+                c.summary = "导航回家";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_company")) {
+                addGoal(c, "nav_company", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.navigate_company", "params", Map.of());
+                c.summary = "导航去公司";
+                ensureCoverage(c, intents);
+                return c;
+            }
             if (intents.contains("nav_stop")) {
                 addGoal(c, "nav_stop", true, "user");
                 c.routeHint = "FAST";
                 c.fastAction = Map.of("capability_id", "navigation.stop", "params", Map.of());
                 c.summary = "停止导航";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_pause")) {
+                addGoal(c, "nav_pause", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.pause", "params", Map.of());
+                c.summary = "暂停导航";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_resume")) {
+                addGoal(c, "nav_resume", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.resume", "params", Map.of());
+                c.summary = "继续导航";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_query_eta")) {
+                addGoal(c, "nav_query_eta", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.query_eta", "params", Map.of());
+                c.summary = "查询 ETA";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_query_status")) {
+                addGoal(c, "nav_query_status", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.query_status", "params", Map.of());
+                c.summary = "查询导航状态";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_query_waypoints")) {
+                addGoal(c, "nav_query_waypoints", true, "user");
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.query_waypoints", "params", Map.of());
+                c.summary = "查询途经点";
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_preference")) {
+                String pref = extractPreference(text);
+                if (pref == null) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "请说明路线偏好（最快/最短/不走高速/躲避拥堵）";
+                    c.summary = "偏好不明";
+                    return c;
+                }
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "nav_preference");
+                goal.put("value", pref);
+                goal.put("source", "user");
+                c.goals.add(goal);
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.set_preference", "params", Map.of("value", pref));
+                c.summary = "切换路线偏好为 " + pref;
+                ensureCoverage(c, intents);
+                return c;
+            }
+            if (intents.contains("nav_add_waypoint")) {
+                String wp = extractWaypoint(text);
+                Map<String, Object> state = observation == null ? Map.of() : observation.getState();
+                boolean hasDest = Boolean.TRUE.equals(state.get("navigation_active")) && state.get("navigation_destination") != null;
+                if (!hasDest) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "当前没有导航终点，请先说目的地，再加途经点";
+                    c.summary = "无终点不可加途经";
+                    return c;
+                }
+                if (wp == null) {
+                    c.routeHint = "CLARIFY";
+                    c.clarifyQuestion = "请说明要追加的途经点";
+                    c.summary = "途经点不明";
+                    return c;
+                }
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "nav_add_waypoint");
+                goal.put("name", wp);
+                goal.put("source", "user");
+                c.goals.add(goal);
+                c.routeHint = "FAST";
+                c.fastAction = Map.of("capability_id", "navigation.add_waypoint", "params", Map.of("name", wp));
+                c.summary = "追加途经点 " + wp;
                 ensureCoverage(c, intents);
                 return c;
             }
@@ -328,8 +434,47 @@ public final class GoalCompiler {
                 c.goals.add(goal);
             }
         }
+        if (intents.contains("nav_home")) {
+            addGoal(c, "nav_home", true, "user");
+        }
+        if (intents.contains("nav_company")) {
+            addGoal(c, "nav_company", true, "user");
+        }
+        if (intents.contains("nav_add_waypoint")) {
+            String wp = extractWaypoint(text);
+            if (wp != null) {
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "nav_add_waypoint");
+                goal.put("name", wp);
+                goal.put("source", "user");
+                c.goals.add(goal);
+            }
+        }
+        if (intents.contains("nav_remove_waypoint")) {
+            String wp = extractRemoveWaypoint(text);
+            if (wp != null) {
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "nav_remove_waypoint");
+                goal.put("name", wp);
+                goal.put("source", "user");
+                c.goals.add(goal);
+            }
+        }
+        if (intents.contains("nav_preference")) {
+            String pref = extractPreference(text);
+            if (pref != null) {
+                Map<String, Object> goal = new LinkedHashMap<>();
+                goal.put("type", "nav_preference");
+                goal.put("value", pref);
+                goal.put("source", "user");
+                c.goals.add(goal);
+            }
+        }
         if (intents.contains("nav_stop")) {
             addGoal(c, "nav_stop", true, "user");
+        }
+        if (intents.contains("nav_query_eta")) {
+            addGoal(c, "nav_query_eta", true, "user");
         }
         if (keepNav) {
             c.criteria.add(criterion("nav_prompt_retained", Map.of(
@@ -373,6 +518,16 @@ public final class GoalCompiler {
                 case "media_volume", "media_keep_muted" -> covered.add("media_volume");
                 case "nav_start" -> covered.add("nav_start");
                 case "nav_stop" -> covered.add("nav_stop");
+                case "nav_home" -> covered.add("nav_home");
+                case "nav_company" -> covered.add("nav_company");
+                case "nav_add_waypoint" -> covered.add("nav_add_waypoint");
+                case "nav_remove_waypoint" -> covered.add("nav_remove_waypoint");
+                case "nav_preference" -> covered.add("nav_preference");
+                case "nav_pause" -> covered.add("nav_pause");
+                case "nav_resume" -> covered.add("nav_resume");
+                case "nav_query_eta" -> covered.add("nav_query_eta");
+                case "nav_query_status" -> covered.add("nav_query_status");
+                case "nav_query_waypoints" -> covered.add("nav_query_waypoints");
                 case "nav_prompt_enabled" -> covered.add("nav_prompt");
                 case "nav_volume", "nav_muted" -> covered.add("nav_diag");
                 default -> {}
@@ -397,7 +552,9 @@ public final class GoalCompiler {
         if (t.length() > 80) return false;
         if (t.contains("度") || t.contains("空调") || t.contains("风量") || t.contains("车窗")
                 || t.contains("导航") || t.contains("媒体") || t.contains("音量") || t.contains("播放")
-                || t.contains("设为") || t.contains("打开") || t.contains("关闭") || t.contains("调")) {
+                || t.contains("设为") || t.contains("打开") || t.contains("关闭") || t.contains("调")
+                || t.contains("途经") || t.contains("回家") || t.contains("公司") || t.contains("ETA")
+                || t.contains("多久") || t.contains("外卖") || t.contains("点单")) {
             return false;
         }
         return t.matches(".*(你好|您好|在吗|谢谢|早上好|晚上好|哈哈|天气|心情|聊天).*")
@@ -436,10 +593,56 @@ public final class GoalCompiler {
                 || (t.contains("声音调低") && t.contains("媒体"))) {
             intents.add("media_volume");
         }
-        if (t.contains("导航到") || t.contains("导航去") || (t.contains("导航") && t.contains("机场"))) {
+
+        boolean multiPointSignal = t.contains("途经") || t.contains("顺路") || t.contains("顺便") || t.contains("加点");
+        boolean goHome = t.contains("回家") || t.contains("导航回家") || t.matches(".*去家\\b.*");
+        boolean goCompany = t.contains("去公司") || t.contains("导航去公司") || t.contains("导航到公司");
+
+        // F-02：回家/公司 + 途经信号 → 交多点规划，禁止 favorite 抢跑成单一收藏开航
+        if (goHome && multiPointSignal) {
+            intents.add("nav_home");
+            intents.add("nav_add_waypoint");
+        } else if (goHome) {
+            intents.add("nav_home");
+        }
+        if (goCompany && multiPointSignal) {
+            intents.add("nav_company");
+            intents.add("nav_add_waypoint");
+        } else if (goCompany) {
+            intents.add("nav_company");
+        }
+
+        if (!goHome && !goCompany
+                && !t.contains("还有多久") && !t.contains("多久到") && !t.contains("预计到达")
+                && (t.contains("导航到") || t.contains("导航去")
+                || extractDestination(t) != null
+                || (t.contains("导航") && t.contains("机场")))) {
             intents.add("nav_start");
         }
-        if (t.contains("停止导航") || t.contains("结束导航")) intents.add("nav_stop");
+        if (multiPointSignal || ADD_WAYPOINT.matcher(t).find()) {
+            intents.add("nav_add_waypoint");
+        }
+        if (REMOVE_WAYPOINT.matcher(t).find() || (t.contains("删除途经") || t.contains("去掉途经"))) {
+            intents.add("nav_remove_waypoint");
+        }
+        if (t.contains("停止导航") || t.contains("结束导航") || t.contains("退出导航") || t.contains("取消导航")) {
+            intents.add("nav_stop");
+        }
+        if (t.contains("暂停导航")) intents.add("nav_pause");
+        if (t.contains("继续导航") || t.contains("恢复导航")) intents.add("nav_resume");
+        if (t.contains("还有多久") || t.contains("多久到") || t.contains("ETA") || t.contains("eta") || t.contains("预计到达")) {
+            intents.add("nav_query_eta");
+        }
+        if (t.contains("导航目的地") || t.contains("现在去哪里") || t.contains("当前目的地")) {
+            intents.add("nav_query_status");
+        }
+        if (t.contains("途经点有哪些") || t.contains("有哪些途经")) {
+            intents.add("nav_query_waypoints");
+        }
+        if (t.contains("不走高速") || t.contains("躲避拥堵") || t.contains("避开拥堵")
+                || t.contains("最快路线") || t.contains("最短距离") || t.contains("少收费") || t.contains("少绕路")) {
+            intents.add("nav_preference");
+        }
         if (t.contains("开启导航播报") || t.contains("打开导航播报")) intents.add("nav_prompt");
         if (t.contains("没有声音") || t.contains("无声")) intents.add("nav_diag");
         return intents;
@@ -517,10 +720,53 @@ public final class GoalCompiler {
     }
 
     private static String extractDestination(String text) {
-        Matcher m = NAV_TO.matcher(text);
+        if (text == null) return null;
+        // strip waypoint clause before parsing destination
+        String cleaned = text.replaceAll("(?:途经|顺便|顺路)(?:一个|家|去)?[\\u4e00-\\u9fa5A-Za-z0-9]{0,40}", " ");
+        Matcher m = NAV_TO.matcher(cleaned);
+        if (m.find()) {
+            String dest = m.group(1).trim()
+                    .replaceAll("[，,。；;].*$", "")
+                    .replaceAll("(?:途经|顺便|顺路).*$", "")
+                    .trim();
+            if (dest.equals("家") || dest.equals("公司") || dest.isBlank()) return null;
+            return dest;
+        }
+        if (cleaned.contains("虹桥机场")) return "虹桥机场";
+        if (cleaned.contains("浦东机场")) return "浦东机场";
+        if (cleaned.contains("东方明珠")) return "东方明珠";
+        if (cleaned.contains("迪士尼")) return "迪士尼";
+        if (cleaned.contains("固安")) return "固安";
+        if (cleaned.contains("加油站")) return "加油站";
+        if (cleaned.contains("星巴克")) return "星巴克";
+        return null;
+    }
+
+    private static String extractWaypoint(String text) {
+        if (text == null) return null;
+        Matcher add = ADD_WAYPOINT.matcher(text);
+        if (add.find()) return add.group(1).trim();
+        Matcher m = WAYPOINT.matcher(text);
         if (m.find()) return m.group(1).trim();
-        if (text.contains("虹桥机场")) return "虹桥机场";
-        if (text.contains("浦东机场")) return "浦东机场";
+        if (text.contains("加油")) return "加油站";
+        if (text.contains("咖啡") || text.contains("星巴克")) return "星巴克";
+        return null;
+    }
+
+    private static String extractRemoveWaypoint(String text) {
+        if (text == null) return null;
+        Matcher m = REMOVE_WAYPOINT.matcher(text);
+        return m.find() ? m.group(1).trim() : null;
+    }
+
+    private static String extractPreference(String text) {
+        if (text == null) return null;
+        if (text.contains("不走高速") || text.contains("避开高速")) return "avoid_highway";
+        if (text.contains("躲避拥堵") || text.contains("避开拥堵")) return "avoid_congestion";
+        if (text.contains("最短")) return "shortest";
+        if (text.contains("少收费")) return "less_toll";
+        if (text.contains("少绕路") || text.contains("防晕车")) return "less_detour";
+        if (text.contains("最快") || text.contains("推荐路线")) return "fastest";
         return null;
     }
 
@@ -556,7 +802,9 @@ public final class GoalCompiler {
         }
         return text.contains("休息") || text.contains("舒服") || text.contains("但是")
                 || text.contains("保留") || text.contains("不要") || text.contains("检查")
-                || text.contains("然后") || text.contains("并且") || text.contains("；");
+                || text.contains("然后") || text.contains("并且") || text.contains("；")
+                || ((text.contains("途经") || text.contains("顺路") || text.contains("顺便"))
+                    && (text.contains("导航") || text.contains("回家") || text.contains("去公司") || text.contains("去")));
     }
 
     private static boolean looksLikeSimpleSet(String text) {
