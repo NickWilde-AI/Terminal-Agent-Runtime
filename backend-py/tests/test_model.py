@@ -58,6 +58,31 @@ def test_keeps_fast_for_simple_set() -> None:
     assert candidate.route_hint == "FAST"
 
 
+def test_coerce_string_goals_and_action_alias() -> None:
+    node = ModelOutputNormalizer.coerce_compile_node(
+        {
+            "routeHint": "FAST",
+            "goals": ["导航到东方明珠"],
+            "fastAction": {
+                "action": "navigation_start",
+                "params": {"destination": "东方明珠", "preference": "fastest"},
+            },
+        },
+        "导航到东方明珠",
+    )
+    assert node["goals"][0]["type"] == "nav_start"
+    assert node["goals"][0]["destination"] == "东方明珠"
+    assert node["fastAction"]["capability_id"] == "navigation.start"
+    assert node["fastAction"]["params"] == {"destination": "东方明珠"}
+
+
+def test_nav_start_value_binds_destination() -> None:
+    from terminal_agent.runtime.task_binder import TaskBinder
+
+    plan = TaskBinder.action_for({"type": "nav_start", "value": "东方明珠"})
+    assert plan == {"capability_id": "navigation.start", "params": {"destination": "东方明珠"}}
+
+
 def test_tools_follow_goals_and_constraints(monkeypatch) -> None:
     # Isolate this contract from TaskBinder implementation timing.
     from terminal_agent.runtime.task_binder import TaskBinder

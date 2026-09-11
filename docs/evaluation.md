@@ -49,3 +49,14 @@ curl -s 'http://localhost:8080/api/v1/evals/last'
 - 生活服务 stub / 抢域由单测补充验证
 
 `agent` 为状态反馈循环；`baseline` 为编译后一次性展开对照，二者报告分开。
+
+## 真实模型抽检（可选）
+
+公开仓默认用 Fake 守门禁。若要补「真模型跑通」证据，可对导航子集做抽检（不替代 54 门禁）：
+
+```bash
+cd backend-py
+uv run python scripts/run_live_nav_eval.py
+```
+
+说明与最近一次脱敏摘要见 [live-model-eval.md](./live-model-eval.md)。

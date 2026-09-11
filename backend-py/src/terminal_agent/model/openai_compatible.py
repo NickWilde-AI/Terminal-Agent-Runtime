@@ -82,8 +82,13 @@ class OpenAiCompatibleModelAdapter:
         from terminal_agent.runtime.goal_compiler import GoalCompiler
 
         system = (
-            "你是智能终端主 Agent（MAIN）。只输出 JSON。字段：routeHint(CHAT|FAST|MULTI_AGENT|"
-            "CLARIFY|REJECT), clarifyQuestion, rejectReason, summary, goals, constraints, criteria, fastAction。"
+            "你是智能终端主 Agent（MAIN）。只输出 JSON。"
+            "字段：routeHint(CHAT|FAST|MULTI_AGENT|CLARIFY|REJECT), clarifyQuestion, rejectReason, summary, "
+            "goals([{type,value,window?,position?,artist?,destination?}]), constraints([{type}]), "
+            "criteria([{template_id,params,required,source}]), fastAction({capability_id,params})。"
+            "goals.type 常用：climate_power, cabin_temperature, cabin_fan, window_position, media_play, "
+            "media_pause, media_volume, nav_start, nav_home, nav_company, nav_add_waypoint, nav_prompt_enabled。"
+            "fastAction.capability_id 用点号能力名，如 navigation.start、climate.set_temperature；禁止只用自然语言字符串当 goals。"
             "写动作 params 使用标准能力参数。纯聊天 CHAT；多目标/多域/约束/途经 MULTI_AGENT；"
             "单一明确写 FAST；信息不足 CLARIFY。用户每个显式子目标都必须进入 goals。"
         )
@@ -98,7 +103,9 @@ class OpenAiCompatibleModelAdapter:
             [{"role": "system", "content": system}, {"role": "user", "content": payload}]
         ))["content"] or ""
         try:
-            node = json.loads(self._extract_json(content))
+            node = ModelOutputNormalizer.coerce_compile_node(
+                json.loads(self._extract_json(content)), user_text
+            )
             candidate = CompiledTaskCandidate(
                 route_hint=node.get("routeHint"), clarify_question=node.get("clarifyQuestion"),
                 reject_reason=node.get("rejectReason"), summary=node.get("summary"),
@@ -107,6 +114,8 @@ class OpenAiCompatibleModelAdapter:
                 raw={"model_mode": self.mode(), "model_id": self.model_router.active_model_id(),
                      "model_placement": self.model_router.placement(), "input": user_text, "api_raw": content},
             )
+            if node.get("_coerced_from"):
+                candidate.raw["coerced_from"] = node["_coerced_from"]
             ModelOutputNormalizer.normalize(candidate, user_text)
             GoalCompiler.ensure_coverage(candidate, GoalCompiler.detect_intents(user_text, user_text))
             return candidate

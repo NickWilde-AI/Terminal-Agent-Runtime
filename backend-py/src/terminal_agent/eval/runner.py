@@ -100,8 +100,19 @@ class EvalRunner:
     def lastReport(self) -> dict[str, Any] | None:  # noqa: N802 — Java parity alias
         return self.last_report
 
-    async def run(self, mode: str = "agent") -> dict[str, Any]:
-        cases = EvalCatalog.all()
+    async def run(
+        self,
+        mode: str = "agent",
+        *,
+        case_ids: list[str] | None = None,
+        id_prefix: str | None = None,
+    ) -> dict[str, Any]:
+        cases = list(EvalCatalog.all())
+        if case_ids:
+            wanted = {str(x) for x in case_ids}
+            cases = [c for c in cases if c.id in wanted]
+        elif id_prefix:
+            cases = [c for c in cases if str(c.id).startswith(id_prefix)]
         results: list[dict[str, Any]] = []
         passed = 0
         false_success = 0
@@ -112,10 +123,15 @@ class EvalRunner:
                 passed += 1
             if one.get("false_success") is True:
                 false_success += 1
+        model_id = None
+        if self.settings is not None:
+            model_id = getattr(self.settings, "model_id", None)
         report: dict[str, Any] = {
             "mode": mode,
             "dataset_version": "eval-seeds-v1",
             "model_mode": self.model.mode(),
+            "model_id": model_id,
+            "case_filter": {"case_ids": case_ids, "id_prefix": id_prefix},
             "total": len(cases),
             "passed": passed,
             "failed": len(cases) - passed,

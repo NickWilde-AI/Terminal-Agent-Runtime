@@ -1,0 +1,4 @@
+# Linguist: Python is the public primary Runtime; Java under backend/ is legacy对照.
+backend/** linguist-vendored
+backend-py/** linguist-detectable
+*.java linguist-vendored

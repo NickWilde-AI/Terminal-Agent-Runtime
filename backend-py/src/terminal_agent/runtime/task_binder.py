@@ -41,7 +41,10 @@ def action_for(goal: dict[str, Any]) -> dict[str, Any] | None:
         case "media_volume":
             return {"capability_id": "media.set_volume", "params": {"value": goal.get("value")}}
         case "nav_start":
-            return {"capability_id": "navigation.start", "params": {"destination": goal.get("destination")}}
+            dest = goal.get("destination")
+            if dest is None:
+                dest = goal.get("value")
+            return {"capability_id": "navigation.start", "params": {"destination": dest}}
         case "nav_stop":
             return {"capability_id": "navigation.stop", "params": {}}
         case "nav_pause":
@@ -49,9 +52,15 @@ def action_for(goal: dict[str, Any]) -> dict[str, Any] | None:
         case "nav_resume":
             return {"capability_id": "navigation.resume", "params": {}}
         case "nav_add_waypoint":
-            return {"capability_id": "navigation.add_waypoint", "params": {"name": goal.get("name")}}
+            name = goal.get("name")
+            if name is None:
+                name = goal.get("value")
+            return {"capability_id": "navigation.add_waypoint", "params": {"name": name}}
         case "nav_remove_waypoint":
-            return {"capability_id": "navigation.remove_waypoint", "params": {"name": goal.get("name")}}
+            name = goal.get("name")
+            if name is None:
+                name = goal.get("value")
+            return {"capability_id": "navigation.remove_waypoint", "params": {"name": name}}
         case "nav_preference":
             return {"capability_id": "navigation.set_preference", "params": {"value": goal.get("value")}}
         case "nav_home":

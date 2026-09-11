@@ -28,6 +28,101 @@ class ModelOutputNormalizer:
     }
 
     @classmethod
+    def coerce_compile_node(cls, node: dict[str, Any], user_text: str | None = None) -> dict[str, Any]:
+        """Repair common live-model shape drift before Pydantic construction.
+
+        Not a Fake degrade: still uses the model's route/summary/actions when present,
+        only coerces string goals / alternate action keys into the Runtime contract.
+        """
+        out = dict(node)
+        fast = out.get("fastAction") or out.get("fast_action")
+        if isinstance(fast, dict):
+            out["fastAction"] = cls.normalize_action(fast)
+
+        goals_in = out.get("goals") or []
+        goals: list[dict[str, Any]] = []
+        if isinstance(goals_in, dict):
+            goals_in = [goals_in]
+        for item in goals_in:
+            if isinstance(item, dict):
+                goals.append(cls.normalize_goal(item))
+            elif isinstance(item, str):
+                coerced = cls._goal_from_utterance(item, out.get("fastAction"))
+                if coerced:
+                    goals.append(coerced)
+        if not goals and isinstance(out.get("fastAction"), dict):
+            from_action = cls._goal_from_fast_action(out["fastAction"])
+            if from_action:
+                goals.append(from_action)
+        if not goals and user_text:
+            # Last-resort structure from the same deterministic compiler Fake uses for coverage,
+            # while keeping the model's routeHint when present.
+            from terminal_agent.runtime.goal_compiler import GoalCompiler
+
+            fallback = GoalCompiler.compile(user_text, None, [])
+            goals = list(fallback.goals)
+            out.setdefault("constraints", fallback.constraints)
+            if not out.get("fastAction") and fallback.fast_action:
+                out["fastAction"] = fallback.fast_action
+            out.setdefault("_coerced_from", "goal_compiler_empty_goals")
+        out["goals"] = goals
+
+        constraints = out.get("constraints") or []
+        if isinstance(constraints, dict):
+            constraints = [constraints]
+        out["constraints"] = [c for c in constraints if isinstance(c, dict)]
+
+        criteria = out.get("criteria") or []
+        if isinstance(criteria, dict):
+            criteria = [criteria]
+        out["criteria"] = [c for c in criteria if isinstance(c, dict)]
+        return out
+
+    @classmethod
+    def _goal_from_utterance(cls, text: str, fast_action: dict[str, Any] | None) -> dict[str, Any] | None:
+        raw = text.strip()
+        if not raw:
+            return None
+        destination = None
+        if isinstance(fast_action, dict):
+            params = fast_action.get("params") or {}
+            destination = params.get("destination") or params.get("name")
+        for prefix in ("导航到", "导航去", "去"):
+            if raw.startswith(prefix):
+                destination = destination or raw[len(prefix):].strip()
+                break
+        if destination or any(x in raw for x in ("导航", "回家", "公司")):
+            goal: dict[str, Any] = {"type": "nav_start", "source": "model"}
+            if destination:
+                goal["value"] = destination
+                goal["destination"] = destination
+            return goal
+        if any(x in raw for x in ("温度", "空调", "度")):
+            return {"type": "cabin_temperature", "value": raw, "source": "model"}
+        return {"type": "raw_utterance", "value": raw, "source": "model"}
+
+    @classmethod
+    def _goal_from_fast_action(cls, action: dict[str, Any]) -> dict[str, Any] | None:
+        cap = str(action.get("capability_id") or "")
+        params = dict(action.get("params") or {})
+        if cap.startswith("navigation.") and (
+            "start" in cap or "navigate_home" in cap or "navigate_company" in cap
+        ):
+            dest = params.get("destination") or params.get("name")
+            goal: dict[str, Any] = {"type": "nav_start", "source": "model"}
+            if dest:
+                goal["value"] = dest
+                goal["destination"] = dest
+            if "home" in cap:
+                goal["type"] = "nav_home"
+            if "company" in cap:
+                goal["type"] = "nav_company"
+            return goal
+        if "temperature" in cap:
+            return {"type": "cabin_temperature", "value": params.get("value"), "source": "model"}
+        return None
+
+    @classmethod
     def normalize(cls, candidate: CompiledTaskCandidate, user_text: str | None = None) -> None:
         candidate.goals = [cls.normalize_goal(g) for g in (candidate.goals or [])]
         if candidate.fast_action is not None:
@@ -42,7 +137,13 @@ class ModelOutputNormalizer:
     @classmethod
     def normalize_action(cls, action: dict[str, Any]) -> dict[str, Any]:
         out = dict(action)
-        raw = str(out.get("capability_id", out.get("capabilityId", "")))
+        raw = str(
+            out.get("capability_id")
+            or out.get("capabilityId")
+            or out.get("action")
+            or out.get("name")
+            or ""
+        )
         if "." in raw:
             capability = raw
         else:
@@ -65,6 +166,17 @@ class ModelOutputNormalizer:
                     break
         if "window" in capability and "position" in params and "window" not in params:
             params["window"] = params.get("id", "all")
+        # Live models often attach preference onto start; schema is exact-key match.
+        if capability == "navigation.start":
+            dest = params.get("destination")
+            if dest is None:
+                dest = params.get("value") or params.get("name")
+            params = {"destination": dest} if dest is not None else {}
+        elif capability in ("navigation.add_waypoint", "navigation.remove_waypoint"):
+            name = params.get("name")
+            if name is None:
+                name = params.get("value") or params.get("destination")
+            params = {"name": name} if name is not None else {}
         out["params"] = params
         out.setdefault("decision", "ACT")
         return out
@@ -78,6 +190,10 @@ class ModelOutputNormalizer:
                 if alias in out:
                     out["value"] = out[alias]
                     break
+        if out.get("type") == "nav_start" and out.get("destination") is None and out.get("value") is not None:
+            out["destination"] = out["value"]
+        if out.get("type") in ("nav_add_waypoint", "nav_remove_waypoint") and out.get("name") is None:
+            out["name"] = out.get("value") or out.get("destination")
         return out
 
     @staticmethod

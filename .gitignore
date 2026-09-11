@@ -22,6 +22,8 @@ backend/target/
 backend/data/
 backend/reports/
 reports/
+!docs/reports/
+!docs/reports/**
 data/
 *.class
 *.jar

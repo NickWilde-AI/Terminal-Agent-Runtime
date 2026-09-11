@@ -1,0 +1,161 @@
+{
+  "title": "Live model navigation subset (N01–N12)",
+  "mode": "agent",
+  "dataset_version": "eval-seeds-v1",
+  "model_mode": "openai_compatible",
+  "model_id": "step-3.5-flash",
+  "case_filter": {
+    "case_ids": null,
+    "id_prefix": "N"
+  },
+  "total": 12,
+  "passed": 7,
+  "failed": 5,
+  "correct_handling_rate": 0.5833333333333334,
+  "false_success": 0,
+  "generated_at": "2026-09-11T07:30:17.752614+00:00",
+  "environment": {
+    "device": "local DeviceSimulator",
+    "runtime": "python",
+    "note": "OpenAI-compatible cloud model + local simulator; not a company production score."
+  },
+  "cases": [
+    {
+      "id": "N01",
+      "category": "fast",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
+    },
+    {
+      "id": "N02",
+      "category": "fast",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
+    },
+    {
+      "id": "N03",
+      "category": "fast",
+      "completable": false,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "PARTIAL",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": "UNSATISFIED"
+    },
+    {
+      "id": "N04",
+      "category": "fast",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "STOPPED",
+      "route": "MULTI_AGENT",
+      "message": "lifecycle=STOPPED; route=MULTI_AGENT; state.navigation_active=False expected True; state.navigation_destination=None expected 虹桥幸福里; missing APPLIED navigation.navigate_home",
+      "stop_reason": "REVIEW_REVISE_EXHAUSTED"
+    },
+    {
+      "id": "N05",
+      "category": "fast",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "WAITING_CLARIFICATION",
+      "route": "CLARIFY",
+      "message": "lifecycle=WAITING_CLARIFICATION; route=CLARIFY; state.navigation_active=False expected True; state.navigation_destination=None expected 陆家嘴办公楼; missing APPLIED navigation.navigate_company",
+      "stop_reason": null
+    },
+    {
+      "id": "N06",
+      "category": "complex",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "MULTI_AGENT",
+      "message": "ok",
+      "stop_reason": null
+    },
+    {
+      "id": "N07",
+      "category": "complex",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "WAITING_CLARIFICATION",
+      "route": "CLARIFY",
+      "message": "lifecycle=WAITING_CLARIFICATION; route=CLARIFY; state.navigation_active=False expected True; state.navigation_destination=None expected 虹桥幸福里; state.navigation_waypoints=[] expected ['加油站']",
+      "stop_reason": null
+    },
+    {
+      "id": "N08",
+      "category": "fast",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
+    },
+    {
+      "id": "N09",
+      "category": "fast",
+      "completable": false,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "FAILED",
+      "route": "FAST",
+      "message": "route=FAST",
+      "stop_reason": "UNSATISFIED"
+    },
+    {
+      "id": "N10",
+      "category": "fast",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "STOPPED",
+      "route": "FAST",
+      "message": "lifecycle=STOPPED; state.navigation_preference=fastest expected avoid_highway; missing APPLIED navigation.set_preference",
+      "stop_reason": "EXECUTION_ERROR"
+    },
+    {
+      "id": "N11",
+      "category": "fast",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
+    },
+    {
+      "id": "N12",
+      "category": "fast",
+      "completable": true,
+      "passed": true,
+      "false_success": null,
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
+    }
+  ],
+  "boundaries": [
+    "This is a public credibility sample, not the Fake 54 gate.",
+    "Fake 54 / false_success=0 remains the deterministic CI gate.",
+    "No API keys, prompts, or raw model payloads are included."
+  ]
+}

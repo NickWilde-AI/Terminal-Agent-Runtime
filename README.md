@@ -105,6 +105,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | --- | --- |
 | **路由** | 纯聊天 `CHAT`；明确单目标走 `FAST`（主 Agent 一次理解 / `DIRECT_ACTION`，不进规划审核）；跨域 / 约束走 `MULTI_AGENT`；信息不足 `CLARIFY`；越权 `REJECT` |
 | **三 Agent 协作** | 主 Agent（`TaskSpec`）→ 执行规划 Agent（`PlanDraft`）→ 方案审核 Agent（`PASS/REVISE/REJECT`）；写设备只经 Runtime/Policy；终态只由 Verifier 判定 |
+| **可靠性层次（重要）** | **兜底是确定性组件，不是更多模型。** Policy（白名单/参数/约束）与 Verifier（状态谓词）决定能不能写、写完算不算成功；审核 Agent 也是模型，只能降低规划出错率，**不能**替代写后回读与终态验收 |
 | **任务编译（Task Schema / GoalCompiler）** | 自然语言 → 目标 / 约束 / 完成条件（`goals` / `constraints` / `criteria`）；模型候选必须覆盖编译结果，见 `GoalCompilerCoverageTest` |
 | **有界执行循环** | Observe → Plan → Policy → Act → Verify；步数与时间预算有上限，避免空转 |
 | **三维证据** | `execution_status` / `verification_status` / `attribution` 分离；ACK ≠ APPLIED；数值碰巧相等 ≠ 本任务造成 |
@@ -128,7 +129,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 1. **领域可插拔** — 新增能力优先加 `DomainModule` + DevicePort Adapter，不重写 Harness / Agent 主循环  
 2. **安全边界清晰** — Policy 是确定性代码；模型不能发明未注册工具  
-3. **验收独立于叙事** — 成败看状态谓词与证据，不看模型自我总结  
+3. **验收独立于叙事** — 成败看状态谓词与证据，不看模型自我总结；多 Agent 协作不等于多层模型兜底  
 4. **内置能力 ≠ 框架边界** — 内置智能终端能力用于验证闭环；执行层面向广泛真实系统  
 5. **模型可替换** — 换网关与模型 ID 即可，Runtime 契约不变  
 
@@ -461,6 +462,8 @@ cd backend && mvn test
 - `baseline`：先编译再一次性展开，用来对照「有没有状态反馈循环」带来的差异  
 
 **对照读报告时注意：** 默认 Python 路径写到 `backend-py/reports/last-agent.json` 与 `last-baseline.json`（Java 对照仍在 `backend/reports/`）。两份报告必须同一 `EvalCatalog` 版本才可横比通过率。当前 Fake 下 Agent 追求高通过且 `false_success=0`；Baseline 作为「无状态反馈循环」对照，通过率更低、允许出现 `false_success`，**不能**用 Baseline 通过率否定 Agent 门禁。若两份报告 `total` 不一致，先重跑两种模式再对照。
+
+可选：**真实模型导航抽检**（N01–N12）见 [docs/live-model-eval.md](./docs/live-model-eval.md)；与 Fake 54 门禁分开读，不混算。
 
 详见 [docs/evaluation.md](./docs/evaluation.md)。能力清单见 [docs/capabilities.md](./docs/capabilities.md)（`capabilities-v4`）。扩展新域见 [docs/extending.md](./docs/extending.md)。
 
