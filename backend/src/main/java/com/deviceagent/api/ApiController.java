@@ -236,6 +236,7 @@ public class ApiController {
         m.put("product", "Terminal Agent Runtime");
         m.put("product_zh", "智能终端 Agent Runtime");
         m.put("phase", "v1");
+        m.put("runtime", "java");
         m.put("defaults_rule_id", "demo-defaults-v1");
         m.put("local_simulator", true);
         m.put("model_mode", modelPort.mode());

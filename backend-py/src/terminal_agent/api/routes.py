@@ -244,6 +244,7 @@ async def meta(request: Request) -> dict[str, Any]:
         "product": "Terminal Agent Runtime",
         "product_zh": "智能终端 Agent Runtime",
         "phase": "v1",
+        "runtime": "python",
         "defaults_rule_id": "demo-defaults-v1",
         "local_simulator": True,
         "model_mode": state.model.mode(),

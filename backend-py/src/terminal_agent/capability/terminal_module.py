@@ -105,9 +105,9 @@ class TerminalDomainModule:
         )
         r.add("navigation.set_home", "设置家地址收藏", True, "NAVIGATION", {"place": str_schema(120)})
         r.add("navigation.set_company", "设置公司地址收藏", True, "NAVIGATION", {"place": str_schema(120)})
-        r.add("navigation.query_eta", "查询剩余时间/ETA；未在导航中须诚实说明", True, "NAVIGATION", {})
-        r.add("navigation.query_status", "查询当前导航状态与目的地", True, "NAVIGATION", {})
-        r.add("navigation.query_waypoints", "查询当前途经点列表", True, "NAVIGATION", {})
+        r.add("navigation.query_eta", "查询剩余时间/ETA；未在导航中须诚实说明", False, "NAVIGATION", {})
+        r.add("navigation.query_status", "查询当前导航状态与目的地", False, "NAVIGATION", {})
+        r.add("navigation.query_waypoints", "查询当前途经点列表", False, "NAVIGATION", {})
         r.add(
             "navigation.set_prompt_enabled",
             "设置导航提示开关，不代表用户听到了声音",

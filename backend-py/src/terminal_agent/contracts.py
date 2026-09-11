@@ -44,6 +44,17 @@ class RunLifecycle(StrEnum):
     TIMED_OUT = "TIMED_OUT"
     INTERRUPTED = "INTERRUPTED"
 
+    def is_terminal(self) -> bool:
+        return self in {
+            RunLifecycle.COMPLETED,
+            RunLifecycle.PARTIAL,
+            RunLifecycle.FAILED,
+            RunLifecycle.STOPPED,
+            RunLifecycle.CANCELLED,
+            RunLifecycle.TIMED_OUT,
+            RunLifecycle.INTERRUPTED,
+        }
+
 
 class RunPhase(StrEnum):
     COMPILE = "COMPILE"
@@ -113,6 +124,13 @@ class AgentRole(StrEnum):
     MAIN = "MAIN"
     PLANNER = "PLANNER"
     REVIEWER = "REVIEWER"
+
+
+class ChangeSource(StrEnum):
+    THIS_TASK = "THIS_TASK"
+    EXTERNAL_OPERATOR = "EXTERNAL_OPERATOR"
+    SIMULATOR_INTERNAL = "SIMULATOR_INTERNAL"
+    UNKNOWN = "UNKNOWN"
 
 
 class StateSnapshot(RuntimeModel):
@@ -383,3 +401,20 @@ class ReviewResult(RuntimeModel):
 
     def to_map(self) -> dict[str, Any]:
         return self.model_dump(exclude={"raw"} if not self.raw else set())
+
+
+class RouterDecision(RuntimeModel):
+    route: RouteType
+    agent_role: str = "MAIN"
+    direct_action: dict[str, Any] | None = None
+    summary: str = ""
+
+
+# Compatibility aliases for older import paths (agent.contracts / domain.models).
+MutableModel = RuntimeModel
+utcnow = now
+
+
+def dict_of(**kwargs: Any) -> dict[str, Any]:
+    """Preserve insertion order; allow None values."""
+    return dict(kwargs)

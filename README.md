@@ -4,8 +4,9 @@
 
 *From intent to verified action — an open-source Agent execution runtime for real systems.*
 
-[![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Python](https://img.shields.io/badge/Python-3.12%20primary-3776AB?logo=python&logoColor=white)](./backend-py/README.md)
+[![Java](https://img.shields.io/badge/Java-21%20legacy-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4%20legacy-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-one--click-2496ED?logo=docker&logoColor=white)](#快速开始)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
@@ -31,7 +32,7 @@
 | 交互层 | Chat / 语音 / IDE / 工作台 | 提供联调工作台；业务 UI 可自建 |
 | **执行层** | 任务状态、策略、工具、回读、记忆、评测 | **本项目的中心** |
 
-仓库内置 **智能终端能力域**（环境控制、多媒体、出行导航可信执行、生活服务接口 stub，以及可插拔的 IoT 灯控样例）用于完整跑通闭环；同一套协议可扩展到手机、IoT、机器人、车载、云运维、GUI / Coding Agent、Agent 平台等场景。核心永远是 **Harness + Agent**，域通过 Capability / DevicePort 接入。
+仓库内置 **智能终端能力域**（环境控制、多媒体、出行导航可信执行、生活服务接口 stub，以及可插拔的 IoT 灯控样例）用于完整跑通闭环；同一套协议可扩展到手机、IoT、机器人、车载、云运维、GUI / Coding Agent、Agent 平台等场景。核心永远是 **Harness + Agent**，域通过 Capability / DevicePort 接入。公开仓以 [`backend-py/`](./backend-py/README.md) **Python 为主实现**（FastAPI / Pydantic / asyncio；评测同看 54 例 / `false_success=0`）；[`backend/`](./backend/) Java 为历史实现与迁移对照。
 
 30 秒上手：
 
@@ -39,8 +40,10 @@
 git clone https://github.com/NickWilde-AI/Terminal-Agent-Runtime.git
 cd Terminal-Agent-Runtime
 cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fake
-./start.sh                    # → http://localhost:8080
+./start.sh                    # → http://localhost:8080（默认 Python）
 ```
+
+> **实现分层：** [`backend-py/`](./backend-py/README.md) 为公开主实现；[`backend/`](./backend/) 为 Java 历史对照。`./start.sh` 默认 Python（无需 JDK）；`./start.sh --java` 启动 Java 对照。
 
 ---
 
@@ -119,7 +122,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | **评测** | Fake 业务种子 **54** 例（含 **N01–N12** 出行导航与 **IOT01–IOT02** IoT 灯控）；`agent` / `baseline` 对照；门禁关注 `false_success=0`；断言独立于 Planner |
 | **工作台** | 任务、设备、介入、记忆、故障、回放、评测一站式 |
 | **持久化** | SQLite 任务 / 事件；支持重启后的恢复路径 |
-| **一键部署** | `./start.sh`：默认 Docker Compose；`--local` 可切本地单进程；工作台 + API 同端口 |
+| **一键部署** | `./start.sh`：默认 Docker Compose + **Python** Runtime；`--local` 本地单进程；`--java` 历史对照；工作台 + API |
 
 ### 设计原则
 
@@ -200,8 +203,9 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 | 方式 | 要求 |
 | --- | --- |
-| **推荐：Docker 一键** | Docker Desktop（或兼容 Engine + Compose） |
-| **本地单进程回退** | Java 21、Maven 3.9+、Node 18+（首次构建前端） |
+| **推荐：Docker 一键** | Docker Desktop（或兼容 Engine + Compose）；默认 **Python** Runtime，**无需 JDK** |
+| **本地单进程（默认 Python）** | Python 3.12 + [`uv`](https://github.com/astral-sh/uv)（推荐）或 venv；Node 18+（首次构建前端） |
+| **本地 / Docker Java 对照** | `./start.sh --java`；需要 Java 21、Maven 3.9+ |
 
 ### 5.2 安装与配置
 
@@ -239,25 +243,31 @@ cp .env.example .env
 
 | 模式 | 触发条件 | 结果 |
 | --- | --- | --- |
-| Docker（默认） | `./start.sh` 或 `./start.sh --docker` | Compose 拉起工作台 + Runtime |
-| 本地 | `./start.sh --local` | 单进程 `:8080` = 工作台 + API |
+| Docker + Python（默认） | `./start.sh` / `--docker` / `--python` | Compose 拉起工作台 + **Python** Runtime |
+| Docker + Java 对照 | `./start.sh --java` | Compose 使用 `docker-compose.java.yml` |
+| 本地 + Python（默认） | `./start.sh --local` | 单进程 `:8080` = 工作台 + Python API（**无需 JDK**） |
+| 本地 + Java 对照 | `./start.sh --local --java` | 单进程 Java jar |
+
+打开 http://localhost:8080/api/v1/meta ，字段 `runtime` 应为 `"python"`（或对照模式下为 `"java"`）。
 
 | URL | 用途 |
 | --- | --- |
 | http://localhost:8080 | 联调工作台 |
-| http://localhost:8080/api/v1/meta | 实例元信息与模型配置 |
+| http://localhost:8080/api/v1/meta | 实例元信息（含 `runtime`）与模型配置 |
 | http://localhost:8080/api/v1/capabilities | 当前能力注册表 |
 | http://localhost:8080/api/v1/device/state | 当前设备 / 模拟器状态 |
 
 常用命令：
 
 ```bash
-./start.sh --status              # 查看是否可用
+./start.sh --status              # 查看是否可用（含 runtime）
 ./start.sh --stop                # 停止 Docker / 本地进程
 ./scripts/smoke_api.sh           # API 冒烟
 FORCE_REBUILD=1 ./start.sh       # 强制重建
-./start.sh --local               # 本地进程模式
-./start.sh --docker              # 显式 Docker（与默认相同）
+./start.sh --local               # 本地 Python
+./start.sh --local --java        # 本地 Java 对照
+./start.sh --java                # Docker Java 对照
+./start.sh --python              # 显式 Python（同默认）
 ```
 
 无密钥快速体验：
@@ -436,12 +446,14 @@ curl -X POST 'http://localhost:8080/api/v1/evals/run?mode=agent'
 curl -X POST 'http://localhost:8080/api/v1/evals/run?mode=baseline'
 curl -s 'http://localhost:8080/api/v1/evals/last'
 
-# 贡献者本地单测
+# 贡献者本地单测（默认 Python）
+cd backend-py && source .venv/bin/activate && DEVICE_AGENT_MODEL_MODE=fake pytest tests/ -q
+# 可选：Java 历史实现对照
 cd backend && mvn test
 ```
 
 覆盖面包括：简单指令、复杂多目标、故障、策略拒绝、取消与改目标、记忆规则，以及 **出行导航可信执行（N01–N12）**。  
-当前 Fake 评测基线为 **54** 例业务种子（`EvalCatalog`），门禁关注 `false_success=0`。注意：`mvn test` 的 JUnit 方法数是另一维度，勿与 54 混说。
+当前 Fake 评测基线为 **54** 例业务种子（`EvalCatalog`），门禁关注 `false_success=0`。注意：本地单测方法数（`pytest` / 可选 `mvn test`）是另一维度，勿与 54 混说。
 
 两种评测模式：
 
@@ -467,11 +479,12 @@ cd backend && mvn test
 │   ├── smoke_api.sh
 │   ├── run_backend.sh        # 贡献者热开发（可选）
 │   └── run_web.sh
-├── deploy/compose/           # Docker Compose
+├── deploy/compose/           # Docker Compose（默认 Python；*.java.yml 为对照）
 ├── configs/presets/          # 模型预设（如 Step）
 ├── docs/                     # 架构 / Capability / API / 评测
 ├── examples/                 # curl 示例
-├── backend/                  # Java 21 · Spring Boot Runtime
+├── backend-py/               # Python 主实现（FastAPI Runtime；见 backend-py/README.md）
+├── backend/                  # Java 21 · Spring Boot（历史实现 / --java 对照）
 │   └── src/main/java/com/deviceagent/
 │       ├── api/              # HTTP API
 │       ├── device/           # DevicePort（模拟器 / 真实设备适配边界）
@@ -497,6 +510,7 @@ cd backend && mvn test
 | [docs/extending.md](./docs/extending.md) | 扩展新域 / 新能力（DomainModule + DevicePort） |
 | [docs/api.md](./docs/api.md) | HTTP API 详解 |
 | [docs/evaluation.md](./docs/evaluation.md) | 评测与回归 |
+| [backend-py/README.md](./backend-py/README.md) | Python 主实现（Runtime / 评测 / API） |
 | [examples/curl_demos.md](./examples/curl_demos.md) | curl 演示 |
 | [configs/README.md](./configs/README.md) | 配置预设说明 |
 | [.env.example](./.env.example) | 环境变量模板 |
@@ -524,9 +538,10 @@ cd backend && mvn test
 建议贡献前本地跑通：
 
 ```bash
-./start.sh
+./start.sh --local
+curl -s http://localhost:8080/api/v1/meta   # 应含 "runtime":"python"
 ./scripts/smoke_api.sh
-cd backend && mvn test
+cd backend-py && source .venv/bin/activate && DEVICE_AGENT_MODEL_MODE=fake pytest tests/ -q
 ```
 
 ---

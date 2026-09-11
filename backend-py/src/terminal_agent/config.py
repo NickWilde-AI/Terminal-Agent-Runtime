@@ -50,14 +50,14 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
-    # Nested via composition (also readable from flat DEVICE_AGENT_MODEL_*).
-    model_mode: str = Field(default="openai_compatible", validation_alias="MODEL_MODE")
-    model_base_url: str = Field(default="https://api.stepfun.com/v1", validation_alias="MODEL_BASE_URL")
-    model_api_key: str = Field(default="", validation_alias="MODEL_API_KEY")
-    model_id: str = Field(default="step-3.5-flash", validation_alias="MODEL_ID")
-    model_edge_id: str = Field(default="step-edge-stub", validation_alias="MODEL_EDGE_ID")
-    model_placement: str = Field(default="cloud", validation_alias="MODEL_PLACEMENT")
-    model_timeout_ms: int = Field(default=60_000, validation_alias="MODEL_TIMEOUT_MS")
+    # Flat DEVICE_AGENT_MODEL_* (env_prefix DEVICE_AGENT_ → DEVICE_AGENT_MODEL_MODE 等)
+    model_mode: str = "openai_compatible"
+    model_base_url: str = "https://api.stepfun.com/v1"
+    model_api_key: str = ""
+    model_id: str = "step-3.5-flash"
+    model_edge_id: str = "step-edge-stub"
+    model_placement: str = "cloud"
+    model_timeout_ms: int = 60_000
 
     absolute_deadline_seconds: int = 120
     max_model_calls: int = 12
