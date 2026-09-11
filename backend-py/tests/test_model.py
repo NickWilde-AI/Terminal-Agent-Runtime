@@ -83,6 +83,24 @@ def test_nav_start_value_binds_destination() -> None:
     assert plan == {"capability_id": "navigation.start", "params": {"destination": "东方明珠"}}
 
 
+def test_preference_alias_and_simple_home_route() -> None:
+    action = ModelOutputNormalizer.normalize_action(
+        {"capability_id": "navigation.set_preference", "params": {"value": "不走高速"}}
+    )
+    assert action["params"] == {"value": "avoid_highway"}
+
+    candidate = CompiledTaskCandidate(
+        route_hint="MULTI_AGENT",
+        goals=[{"type": "nav_home", "value": True}],
+        constraints=[{"type": "navigation_prompt_enabled"}],
+    )
+    ModelOutputNormalizer.normalize(candidate, "导航回家")
+    assert candidate.constraints == []
+    assert candidate.route_hint == "FAST"
+    assert candidate.fast_action is not None
+    assert candidate.fast_action["capability_id"] == "navigation.navigate_home"
+
+
 def test_tools_follow_goals_and_constraints(monkeypatch) -> None:
     # Isolate this contract from TaskBinder implementation timing.
     from terminal_agent.runtime.task_binder import TaskBinder

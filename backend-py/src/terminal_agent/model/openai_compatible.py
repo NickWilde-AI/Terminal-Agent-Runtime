@@ -117,7 +117,45 @@ class OpenAiCompatibleModelAdapter:
             if node.get("_coerced_from"):
                 candidate.raw["coerced_from"] = node["_coerced_from"]
             ModelOutputNormalizer.normalize(candidate, user_text)
-            GoalCompiler.ensure_coverage(candidate, GoalCompiler.detect_intents(user_text, user_text))
+            intents = list(GoalCompiler.detect_intents(user_text, user_text))
+            from terminal_agent.runtime.goal_compiler import _COVERAGE_BY_GOAL_TYPE
+
+            covered = {
+                _COVERAGE_BY_GOAL_TYPE[str(g.get("type"))]
+                for g in candidate.goals
+                if str(g.get("type")) in _COVERAGE_BY_GOAL_TYPE
+            }
+            missing = [i for i in intents if i != "nav_diag" and i not in covered]
+            if missing:
+                # Deterministic structure repair for known intents — not a Fake degrade.
+                repaired = GoalCompiler.compile(user_text, observation, memory_hints or [])
+                have = {str(g.get("type")) for g in candidate.goals}
+                for goal in repaired.goals:
+                    mapped = _COVERAGE_BY_GOAL_TYPE.get(str(goal.get("type")))
+                    if mapped in set(missing) or str(goal.get("type")) not in have:
+                        candidate.goals.append(goal)
+                        have.add(str(goal.get("type")))
+                if candidate.fast_action is None and repaired.fast_action is not None:
+                    candidate.fast_action = repaired.fast_action
+                if not candidate.constraints and repaired.constraints:
+                    candidate.constraints = list(repaired.constraints)
+                candidate.raw["coverage_repaired_from"] = "goal_compiler"
+                candidate.raw["coverage_missing_before_repair"] = missing
+                candidate.clarify_question = None
+                if (candidate.route_hint or "").upper() in {"CLARIFY", ""}:
+                    candidate.route_hint = repaired.route_hint or "FAST"
+                ModelOutputNormalizer.normalize(candidate, user_text)
+            GoalCompiler.ensure_coverage(candidate, intents)
+            # Waypoint without an active destination must clarify, not hard-fail as FAST.
+            state = observation.state if observation else {}
+            if (
+                any(str(g.get("type")) == "nav_add_waypoint" for g in candidate.goals)
+                and state.get("navigation_active") is True
+                and not state.get("navigation_destination")
+            ):
+                candidate.route_hint = "CLARIFY"
+                candidate.clarify_question = candidate.clarify_question or "当前没有导航终点，请先设置目的地再加途经点"
+                candidate.raw["route_corrected"] = "waypoint_without_destination_clarify"
             return candidate
         except Exception as exc:
             raise RuntimeError(f"模型输出无法解析为合法任务 JSON（不降级 Fake）: {exc}; raw={content[:500]}") from exc

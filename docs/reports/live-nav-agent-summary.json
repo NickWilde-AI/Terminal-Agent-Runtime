@@ -9,11 +9,11 @@
     "id_prefix": "N"
   },
   "total": 12,
-  "passed": 7,
-  "failed": 5,
-  "correct_handling_rate": 0.5833333333333334,
+  "passed": 9,
+  "failed": 3,
+  "correct_handling_rate": 0.75,
   "false_success": 0,
-  "generated_at": "2026-09-11T07:30:17.752614+00:00",
+  "generated_at": "2026-09-11T07:44:58.467333+00:00",
   "environment": {
     "device": "local DeviceSimulator",
     "runtime": "python",
@@ -57,12 +57,12 @@
       "id": "N04",
       "category": "fast",
       "completable": true,
-      "passed": false,
+      "passed": true,
       "false_success": null,
-      "lifecycle": "STOPPED",
-      "route": "MULTI_AGENT",
-      "message": "lifecycle=STOPPED; route=MULTI_AGENT; state.navigation_active=False expected True; state.navigation_destination=None expected 虹桥幸福里; missing APPLIED navigation.navigate_home",
-      "stop_reason": "REVIEW_REVISE_EXHAUSTED"
+      "lifecycle": "COMPLETED",
+      "route": "FAST",
+      "message": "ok",
+      "stop_reason": null
     },
     {
       "id": "N05",
@@ -70,13 +70,24 @@
       "completable": true,
       "passed": false,
       "false_success": null,
-      "lifecycle": "WAITING_CLARIFICATION",
-      "route": "CLARIFY",
-      "message": "lifecycle=WAITING_CLARIFICATION; route=CLARIFY; state.navigation_active=False expected True; state.navigation_destination=None expected 陆家嘴办公楼; missing APPLIED navigation.navigate_company",
-      "stop_reason": null
+      "lifecycle": "STOPPED",
+      "route": "MULTI_AGENT",
+      "message": "lifecycle=STOPPED; route=MULTI_AGENT; state.navigation_active=False expected True; state.navigation_destination=None expected 陆家嘴办公楼; missing APPLIED navigation.navigate_company",
+      "stop_reason": "REVIEW_REJECTED"
     },
     {
       "id": "N06",
+      "category": "complex",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "STOPPED",
+      "route": "MULTI_AGENT",
+      "message": "lifecycle=STOPPED; state.navigation_active=False expected True; state.navigation_destination=None expected 东方明珠; state.navigation_waypoints=[] expected ['加油站']",
+      "stop_reason": "REVIEW_REVISE_EXHAUSTED"
+    },
+    {
+      "id": "N07",
       "category": "complex",
       "completable": true,
       "passed": true,
@@ -84,17 +95,6 @@
       "lifecycle": "COMPLETED",
       "route": "MULTI_AGENT",
       "message": "ok",
-      "stop_reason": null
-    },
-    {
-      "id": "N07",
-      "category": "complex",
-      "completable": true,
-      "passed": false,
-      "false_success": null,
-      "lifecycle": "WAITING_CLARIFICATION",
-      "route": "CLARIFY",
-      "message": "lifecycle=WAITING_CLARIFICATION; route=CLARIFY; state.navigation_active=False expected True; state.navigation_destination=None expected 虹桥幸福里; state.navigation_waypoints=[] expected ['加油站']",
       "stop_reason": null
     },
     {
@@ -112,26 +112,15 @@
       "id": "N09",
       "category": "fast",
       "completable": false,
-      "passed": false,
+      "passed": true,
       "false_success": null,
-      "lifecycle": "FAILED",
-      "route": "FAST",
-      "message": "route=FAST",
-      "stop_reason": "UNSATISFIED"
+      "lifecycle": "WAITING_CLARIFICATION",
+      "route": "CLARIFY",
+      "message": "ok",
+      "stop_reason": null
     },
     {
       "id": "N10",
-      "category": "fast",
-      "completable": true,
-      "passed": false,
-      "false_success": null,
-      "lifecycle": "STOPPED",
-      "route": "FAST",
-      "message": "lifecycle=STOPPED; state.navigation_preference=fastest expected avoid_highway; missing APPLIED navigation.set_preference",
-      "stop_reason": "EXECUTION_ERROR"
-    },
-    {
-      "id": "N11",
       "category": "fast",
       "completable": true,
       "passed": true,
@@ -140,6 +129,17 @@
       "route": "FAST",
       "message": "ok",
       "stop_reason": null
+    },
+    {
+      "id": "N11",
+      "category": "fast",
+      "completable": true,
+      "passed": false,
+      "false_success": null,
+      "lifecycle": "STOPPED",
+      "route": "MULTI_AGENT",
+      "message": "lifecycle=STOPPED; route=MULTI_AGENT; state.last_nav_query_type=None expected eta; missing APPLIED navigation.query_eta",
+      "stop_reason": "EXECUTION_ERROR"
     },
     {
       "id": "N12",

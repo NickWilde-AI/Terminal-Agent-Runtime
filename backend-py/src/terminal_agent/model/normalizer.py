@@ -122,12 +122,46 @@ class ModelOutputNormalizer:
             return {"type": "cabin_temperature", "value": params.get("value"), "source": "model"}
         return None
 
+    KNOWN_CONSTRAINTS = {
+        "no_window",
+        "no_reboot",
+        "no_cabin_write",
+        "no_media_write",
+        "keep_navigation_prompt",
+    }
+
     @classmethod
     def normalize(cls, candidate: CompiledTaskCandidate, user_text: str | None = None) -> None:
         candidate.goals = [cls.normalize_goal(g) for g in (candidate.goals or [])]
         if candidate.fast_action is not None:
             candidate.fast_action = cls.normalize_action(candidate.fast_action)
-        candidate.constraints = candidate.constraints or []
+            # Preference often only appears in the utterance; fill enum from text.
+            if (
+                str(candidate.fast_action.get("capability_id")) == "navigation.set_preference"
+                and not (candidate.fast_action.get("params") or {}).get("value")
+                and user_text
+            ):
+                from terminal_agent.runtime.goal_compiler import extract_preference
+
+                mapped = extract_preference(user_text)
+                if mapped:
+                    candidate.fast_action["params"] = {"value": mapped}
+        cleaned: list[dict[str, Any]] = []
+        for item in candidate.constraints or []:
+            if not isinstance(item, dict):
+                continue
+            type_ = str(item.get("type") or "")
+            if type_ == "navigation_prompt_enabled":
+                type_ = "keep_navigation_prompt"
+                item = {**item, "type": type_}
+            if type_ not in cls.KNOWN_CONSTRAINTS:
+                continue
+            if type_ == "keep_navigation_prompt" and not (
+                user_text and any(x in user_text for x in ("保留导航", "导航提示", "保留提示"))
+            ):
+                continue
+            cleaned.append(item)
+        candidate.constraints = cleaned
         if candidate.criteria:
             candidate.criteria = [cls.normalize_criterion(c) for c in candidate.criteria]
         else:
@@ -177,6 +211,26 @@ class ModelOutputNormalizer:
             if name is None:
                 name = params.get("value") or params.get("destination")
             params = {"name": name} if name is not None else {}
+        elif capability == "navigation.set_preference":
+            from terminal_agent.runtime.goal_compiler import extract_preference
+
+            raw_value = params.get("value")
+            mapped = None
+            if isinstance(raw_value, str):
+                if raw_value in {
+                    "fastest",
+                    "shortest",
+                    "avoid_highway",
+                    "avoid_congestion",
+                    "less_toll",
+                    "less_detour",
+                }:
+                    mapped = raw_value
+                else:
+                    mapped = extract_preference(raw_value)
+            params = {"value": mapped} if mapped is not None else {}
+        elif capability in ("navigation.navigate_home", "navigation.navigate_company"):
+            params = {}
         out["params"] = params
         out.setdefault("decision", "ACT")
         return out
@@ -220,6 +274,30 @@ class ModelOutputNormalizer:
 
     @classmethod
     def correct_route(cls, candidate: CompiledTaskCandidate, text: str | None) -> None:
+        goal_types = {str(g.get("type")) for g in candidate.goals or []}
+        simple_nav = {
+            "nav_home",
+            "nav_company",
+            "nav_preference",
+            "nav_query_eta",
+            "nav_query_status",
+            "nav_query_waypoints",
+            "nav_stop",
+            "nav_pause",
+            "nav_resume",
+        }
+        if goal_types and goal_types <= simple_nav and not candidate.constraints and not cls.looks_complex_request(
+            text or ""
+        ):
+            candidate.route_hint = "FAST"
+            if candidate.fast_action is None and len(candidate.goals) == 1:
+                from terminal_agent.runtime.task_binder import TaskBinder
+
+                action = TaskBinder.action_for(candidate.goals[0])
+                if action:
+                    candidate.fast_action = cls.normalize_action(action)
+            candidate.raw["route_corrected"] = "simple_nav_force_fast"
+            return
         if (candidate.route_hint or "").upper() != "FAST":
             return
         reason = None
