@@ -460,7 +460,7 @@ cd backend && mvn test
 - `agent`：按真实闭环一步步做完再验收  
 - `baseline`：先编译再一次性展开，用来对照「有没有状态反馈循环」带来的差异  
 
-**对照读报告时注意：** `backend/reports/last-agent.json` 与 `last-baseline.json` 必须同一 `EvalCatalog` 版本才可横比通过率。当前 Fake 下 Agent 追求高通过且 `false_success=0`；Baseline 作为「无状态反馈循环」对照，通过率更低、允许出现 `false_success`，**不能**用 Baseline 通过率否定 Agent 门禁。若两份报告 `total` 不一致，先重跑两种模式再对照。
+**对照读报告时注意：** 默认 Python 路径写到 `backend-py/reports/last-agent.json` 与 `last-baseline.json`（Java 对照仍在 `backend/reports/`）。两份报告必须同一 `EvalCatalog` 版本才可横比通过率。当前 Fake 下 Agent 追求高通过且 `false_success=0`；Baseline 作为「无状态反馈循环」对照，通过率更低、允许出现 `false_success`，**不能**用 Baseline 通过率否定 Agent 门禁。若两份报告 `total` 不一致，先重跑两种模式再对照。
 
 详见 [docs/evaluation.md](./docs/evaluation.md)。能力清单见 [docs/capabilities.md](./docs/capabilities.md)（`capabilities-v4`）。扩展新域见 [docs/extending.md](./docs/extending.md)。
 

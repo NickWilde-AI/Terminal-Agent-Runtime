@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from terminal_agent.agent.contracts import CompiledTaskCandidate
 from terminal_agent.capability.registry import CapabilityRegistry
@@ -74,7 +75,8 @@ def test_tools_follow_goals_and_constraints(monkeypatch) -> None:
     assert "media_play" not in names
 
 
-def test_standard_tool_call_and_role_tool_feedback(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_standard_tool_call_and_role_tool_feedback(monkeypatch) -> None:
     from terminal_agent.runtime.task_binder import TaskBinder
 
     monkeypatch.setattr(TaskBinder, "action_for", staticmethod(
@@ -94,10 +96,10 @@ def test_standard_tool_call_and_role_tool_feedback(monkeypatch) -> None:
 
     adapter = OpenAiCompatibleModelAdapter(
         settings(), registry=CapabilityRegistry(),
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    adapter.request_context("run-1", 1, None)
-    plan = adapter.plan_next(
+    await adapter.request_context("run-1", 1, None)
+    plan = await adapter.plan_next(
         "run-1", [{"type": "cabin_temperature", "value": 23}], [],
         [], StateSnapshot(state={"temperature_setpoint": 26}), [], [],
     )
@@ -105,7 +107,7 @@ def test_standard_tool_call_and_role_tool_feedback(monkeypatch) -> None:
     assert plan["tool_call_id"] == "call_1"
     assert adapter.sessions["run-1"].messages[-1]["tool_calls"][0]["type"] == "function"
 
-    adapter.feedback("run-1", 1, plan, {"status": "APPLIED"})
+    await adapter.feedback("run-1", 1, plan, {"status": "APPLIED"})
     tool_message = adapter.sessions["run-1"].messages[-1]
     assert tool_message["role"] == "tool"
     assert tool_message["tool_call_id"] == "call_1"

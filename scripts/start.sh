@@ -29,14 +29,14 @@ for arg in "$@"; do
     --local) MODE="local" ;;
     --python) RUNTIME="python" ;;
     --java) RUNTIME="java" ;;
-    --status) ACTION="status" ;;
-    --stop) ACTION="stop" ;;
+    --status|status) ACTION="status" ;;
+    --stop|stop) ACTION="stop" ;;
     -h|--help)
       sed -n '3,14p' "$0"
       exit 0
       ;;
     *)
-      echo "未知参数: $arg（使用 --help 查看用法）" >&2
+      printf '未知参数: %s（使用 --help 查看用法）\n' "$arg" >&2
       exit 2
       ;;
   esac

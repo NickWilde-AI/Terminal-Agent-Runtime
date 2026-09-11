@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1")
 
 
 def _state(request: Request) -> AppState:
-    return request.app.state.app_state
+    return cast(AppState, request.app.state.app_state)
 
 
 class CreateRunRequest(BaseModel):
@@ -218,7 +218,7 @@ async def run_eval(request: Request, mode: str = Query("agent")) -> dict[str, An
     state = _state(request)
     if state.eval_runner is None:
         raise HTTPException(status_code=503, detail="eval runner unavailable")
-    return await state.eval_runner.run(mode)
+    return cast(dict[str, Any], await state.eval_runner.run(mode))
 
 
 @router.get("/evals/last")
@@ -227,7 +227,7 @@ async def last_eval(request: Request) -> dict[str, Any]:
     last = state.eval_runner.last_report if state.eval_runner else None
     if last is None:
         return {"available": False, "note": "尚未评测"}
-    return last
+    return cast(dict[str, Any], last)
 
 
 @router.post("/experiment/require-confirmation")

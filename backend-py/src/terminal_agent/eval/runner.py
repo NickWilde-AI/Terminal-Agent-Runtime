@@ -7,9 +7,10 @@ import json
 import tempfile
 import time
 import uuid
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.contracts import ExecutionStatus, RunLifecycle, RunRecord, now

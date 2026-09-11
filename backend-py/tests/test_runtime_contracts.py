@@ -16,7 +16,7 @@ from terminal_agent.persistence.store import InMemoryRunStore
 from terminal_agent.policy.engine import PolicyEngine
 from terminal_agent.runtime.executor import CapabilityExecutor
 from terminal_agent.runtime.harness import HarnessService
-from terminal_agent.runtime.support import ModelRouter, RuntimeSettings, TaskBinder
+from terminal_agent.runtime.support import RuntimeSettings, TaskBinder
 from terminal_agent.runtime.task_binder import action_for as binder_action_for
 from terminal_agent.runtime.verifier import Verifier
 

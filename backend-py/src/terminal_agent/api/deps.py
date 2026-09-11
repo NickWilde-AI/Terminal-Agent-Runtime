@@ -22,7 +22,7 @@ from terminal_agent.policy.engine import PolicyEngine
 from terminal_agent.runtime.baseline import BaselineRunner
 from terminal_agent.runtime.executor import CapabilityExecutor
 from terminal_agent.runtime.harness import HarnessService
-from terminal_agent.runtime.support import ModelRouter, RuntimeSettings, TaskBinder, BudgetSettings
+from terminal_agent.runtime.support import BudgetSettings, ModelRouter, RuntimeSettings, TaskBinder
 from terminal_agent.runtime.verifier import Verifier
 
 
@@ -171,7 +171,8 @@ def build_app_state(settings: Settings | None = None) -> AppState:
 
 def capability_to_map(definition: Any) -> dict[str, Any]:
     if hasattr(definition, "to_map"):
-        return definition.to_map()
+        mapped = definition.to_map()
+        return mapped if isinstance(mapped, dict) else dict(mapped)
     props = getattr(definition, "properties", {}) or {}
     return {
         "capability_id": definition.id,

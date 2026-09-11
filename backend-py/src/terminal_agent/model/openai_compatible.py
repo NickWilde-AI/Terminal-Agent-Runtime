@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -27,28 +27,38 @@ class _Session:
 
 class OpenAiCompatibleModelAdapter:
     def __init__(
-        self, settings: Any, model_router: ModelRouter | None = None,
-        registry: CapabilityRegistry | None = None, client: httpx.Client | None = None,
+        self,
+        settings: Any,
+        model_router: ModelRouter | None = None,
+        registry: CapabilityRegistry | None = None,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.settings = settings
         self.model_router = model_router or ModelRouter(settings)
         self.registry = registry or CapabilityRegistry()
         timeout = getattr(settings, "model_timeout_ms", 30_000) / 1000
-        self.client = client or httpx.Client(timeout=timeout)
+        self.client = client or httpx.AsyncClient(timeout=timeout)
         self.sessions: dict[str, _Session] = {}
 
     def mode(self) -> str:
         return "openai_compatible"
 
-    def request_context(
-        self, run_id: str, goal_version: int, deadline: datetime | None,
+    async def request_context(
+        self,
+        run_id: str,
+        goal_version: int,
+        deadline: datetime | None,
         role: AgentRole = AgentRole.MAIN,
     ) -> None:
         session = self.sessions.setdefault(self._session_key(run_id, role), _Session())
         session.goal_version, session.deadline, session.role = goal_version, deadline, role
 
-    def feedback(
-        self, run_id: str, goal_version: int, plan: dict[str, Any], result: dict[str, Any],
+    async def feedback(
+        self,
+        run_id: str,
+        goal_version: int,
+        plan: dict[str, Any],
+        result: dict[str, Any],
     ) -> None:
         session = self.sessions.setdefault(run_id, _Session())
         if session.goal_version != goal_version:
@@ -62,8 +72,10 @@ class OpenAiCompatibleModelAdapter:
             "content": self._json(result),
         })
 
-    def compile_task(
-        self, user_text: str, observation: StateSnapshot | None,
+    async def compile_task(
+        self,
+        user_text: str,
+        observation: StateSnapshot | None,
         memory_hints: list[dict[str, Any]] | None = None,
     ) -> CompiledTaskCandidate:
         self._ensure_configured()
@@ -82,7 +94,9 @@ class OpenAiCompatibleModelAdapter:
             f"检测到的意图：{self._json(list(GoalCompiler.detect_intents(user_text, user_text)))}\n"
             f"model_placement：{self.model_router.placement()}"
         )
-        content = self._chat([{"role": "system", "content": system}, {"role": "user", "content": payload}])["content"] or ""
+        content = (await self._chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": payload}]
+        ))["content"] or ""
         try:
             node = json.loads(self._extract_json(content))
             candidate = CompiledTaskCandidate(
@@ -99,10 +113,15 @@ class OpenAiCompatibleModelAdapter:
         except Exception as exc:
             raise RuntimeError(f"模型输出无法解析为合法任务 JSON（不降级 Fake）: {exc}; raw={content[:500]}") from exc
 
-    def plan_next(
-        self, run_id: str, goals: list[dict[str, Any]], constraints: list[dict[str, Any]],
-        criteria: list[dict[str, Any]], observation: StateSnapshot,
-        prior_actions: list[dict[str, Any]], memory_hints: list[dict[str, Any]] | None = None,
+    async def plan_next(
+        self,
+        run_id: str,
+        goals: list[dict[str, Any]],
+        constraints: list[dict[str, Any]],
+        criteria: list[dict[str, Any]],
+        observation: StateSnapshot,
+        prior_actions: list[dict[str, Any]],
+        memory_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self._ensure_configured()
         session = self.sessions.setdefault(run_id, _Session())
@@ -113,7 +132,7 @@ class OpenAiCompatibleModelAdapter:
                 "observation": observation.state, "priorActions": prior_actions,
                 "long_term_memory": memory_hints or []}
         session.messages.append({"role": "user", "content": "请根据以下状态决定下一步：\n" + self._json(data)})
-        response = self._chat(session.messages, self.tools_for_task(goals, constraints))
+        response = await self._chat(session.messages, self.tools_for_task(goals, constraints))
         calls = response.get("tool_calls") or []
         if calls:
             call = calls[0]
@@ -141,14 +160,18 @@ class OpenAiCompatibleModelAdapter:
                 node = ModelOutputNormalizer.normalize_action(node)
             if "decision" in node or "capability_id" in node:
                 node["model_raw"] = response["raw"]
-                return node
+                return cast(dict[str, Any], node)
         except Exception:
             pass
         return {"decision": "FINISH", "reason": content or "模型未提出新动作", "model_raw": response["raw"]}
 
-    def plan_draft(
-        self, run_id: str, task_spec: TaskSpec, observation: StateSnapshot,
-        prior_actions: list[dict[str, Any]], revise_suggestions: list[str] | None,
+    async def plan_draft(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        observation: StateSnapshot,
+        prior_actions: list[dict[str, Any]],
+        revise_suggestions: list[str] | None,
         revision_round: int,
     ) -> PlanDraft:
         self._ensure_configured()
@@ -161,7 +184,7 @@ class OpenAiCompatibleModelAdapter:
                    "prior_actions": prior_actions, "revise_suggestions": revise_suggestions or [],
                    "revision_round": revision_round}
         session.messages.append({"role": "user", "content": "请生成 PlanDraft JSON：\n" + self._json(payload)})
-        response = self._chat(session.messages)
+        response = await self._chat(session.messages)
         content = response.get("content") or ""
         session.messages.append({"role": "assistant", "content": content})
         try:
@@ -181,7 +204,7 @@ class OpenAiCompatibleModelAdapter:
             draft.raw["parse_fallback"] = str(exc)
             return draft
 
-    def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult:
+    async def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult:
         self._ensure_configured()
         key = self._session_key(run_id, AgentRole.REVIEWER)
         session = self.sessions.setdefault(key, _Session(role=AgentRole.REVIEWER))
@@ -191,7 +214,7 @@ class OpenAiCompatibleModelAdapter:
                 "risky_actions,evidence_gaps,suggestions。"})
         payload = {"task_spec": task_spec.model_dump(mode="json"), "plan_draft": draft.model_dump(mode="json")}
         session.messages.append({"role": "user", "content": "请审核：\n" + self._json(payload)})
-        response = self._chat(session.messages)
+        response = await self._chat(session.messages)
         content = response.get("content") or ""
         session.messages.append({"role": "assistant", "content": content})
         try:
@@ -234,7 +257,7 @@ class OpenAiCompatibleModelAdapter:
                 result.append(tool)
         return result
 
-    def _chat(
+    async def _chat(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"model": self.model_router.active_model_id(), "temperature": 0,
@@ -243,8 +266,11 @@ class OpenAiCompatibleModelAdapter:
             body.update(tools=tools, tool_choice="auto")
         base = str(getattr(self.settings, "model_base_url", "")).rstrip("/")
         key = str(getattr(self.settings, "model_api_key", ""))
-        response = self.client.post(f"{base}/chat/completions", json=body,
-                                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        response = await self.client.post(
+            f"{base}/chat/completions",
+            json=body,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        )
         if response.status_code >= 300:
             raise RuntimeError(f"模型 API 失败 HTTP {response.status_code}: {response.text}")
         root = response.json()
@@ -266,9 +292,10 @@ class OpenAiCompatibleModelAdapter:
         if isinstance(arguments, dict):
             return dict(arguments)
         try:
-            return json.loads(str(arguments or "{}"))
+            parsed = json.loads(str(arguments or "{}"))
         except Exception:
             return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     @staticmethod
     def _extract_json(content: str) -> str:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from terminal_agent.capability.domain_module import CapabilityRegistrar
 from terminal_agent.capability.schemas import bool_schema, integer_schema, str_schema
 

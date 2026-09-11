@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from terminal_agent.agent.contracts import CompiledTaskCandidate, PlanDraft, ReviewResult, TaskSpec
-from terminal_agent.domain.models import StateSnapshot
+from terminal_agent.domain.models import AgentRole, StateSnapshot
 from terminal_agent.model.normalizer import ModelOutputNormalizer
 
 
@@ -13,8 +14,10 @@ class FakeModelAdapter:
     def mode(self) -> str:
         return "fake"
 
-    def compile_task(
-        self, user_text: str, observation: StateSnapshot | None,
+    async def compile_task(
+        self,
+        user_text: str,
+        observation: StateSnapshot | None,
         memory_hints: list[dict[str, Any]] | None = None,
     ) -> CompiledTaskCandidate:
         # Intentionally delegates exactly as Java does; imported lazily to avoid a package cycle.
@@ -25,9 +28,13 @@ class FakeModelAdapter:
         ModelOutputNormalizer.normalize(candidate, user_text)
         return candidate
 
-    def plan_draft(
-        self, run_id: str, task_spec: TaskSpec, observation: StateSnapshot,
-        prior_actions: list[dict[str, Any]], revise_suggestions: list[str] | None,
+    async def plan_draft(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        observation: StateSnapshot,
+        prior_actions: list[dict[str, Any]],
+        revise_suggestions: list[str] | None,
         revision_round: int,
     ) -> PlanDraft:
         from terminal_agent.agent.multi_agent import MultiAgentSupport
@@ -39,7 +46,7 @@ class FakeModelAdapter:
         draft.raw.update(agent_role="PLANNER", revise_suggestions=revise_suggestions or [])
         return draft
 
-    def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult:
+    async def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult:
         from terminal_agent.agent.multi_agent import MultiAgentSupport
 
         result = MultiAgentSupport.review(task_spec, draft, "fake")
@@ -47,29 +54,50 @@ class FakeModelAdapter:
         result.raw["agent_role"] = "REVIEWER"
         return result
 
-    def plan_next(
-        self, run_id: str, goals: list[dict[str, Any]], constraints: list[dict[str, Any]],
-        criteria: list[dict[str, Any]], observation: StateSnapshot,
-        prior_actions: list[dict[str, Any]], memory_hints: list[dict[str, Any]] | None = None,
+    async def plan_next(
+        self,
+        run_id: str,
+        goals: list[dict[str, Any]],
+        constraints: list[dict[str, Any]],
+        criteria: list[dict[str, Any]],
+        observation: StateSnapshot,
+        prior_actions: list[dict[str, Any]],
+        memory_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         from terminal_agent.agent.multi_agent import MultiAgentSupport
         from terminal_agent.runtime.support import TaskBinder
 
-        allowed = []
+        allowed: list[str] = []
         for goal in goals or []:
             action = TaskBinder.action_for(goal)
             if action:
                 allowed.append(str(action["capability_id"]))
-        spec = TaskSpec(run_id=run_id, goals=goals or [], constraints=constraints or [],
-                        allowed_capabilities=allowed)
+        spec = TaskSpec(
+            run_id=run_id,
+            goals=goals or [],
+            constraints=constraints or [],
+            allowed_capabilities=allowed,
+        )
         draft = MultiAgentSupport.build_plan_draft(spec, observation, prior_actions, 0, "fake")
         if not draft.actions:
             reason = draft.assumptions[0] if draft.assumptions else "观察显示目标已满足或无需动作"
             return {"decision": "FINISH", "reason": reason}
         return {**draft.actions[0], "decision": "ACT"}
 
-    def request_context(self, *_: Any, **__: Any) -> None:
+    async def request_context(
+        self,
+        run_id: str,
+        goal_version: int,
+        deadline: datetime | None,
+        role: AgentRole = AgentRole.MAIN,
+    ) -> None:
         return None
 
-    def feedback(self, *_: Any, **__: Any) -> None:
+    async def feedback(
+        self,
+        run_id: str,
+        goal_version: int,
+        plan: dict[str, Any],
+        result: dict[str, Any],
+    ) -> None:
         return None

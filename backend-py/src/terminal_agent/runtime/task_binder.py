@@ -123,16 +123,23 @@ class TaskBinder:
                 for field, value in expected.items():
                     self._add(task, "field_eq", {"field": field, "value": value}, java_str(goal.get("source", "user")))
             else:
-                special = {
+                special_map: dict[str, tuple[str, dict[str, Any]]] = {
                     "navigation.add_waypoint": ("nav_waypoint_contains", {"name": params.get("name")}),
                     "navigation.remove_waypoint": ("nav_waypoint_absent", {"name": params.get("name")}),
                     "navigation.query_eta": ("nav_query_type", {"type": "eta"}),
                     "navigation.query_status": ("nav_query_type", {"type": "status"}),
                     "navigation.query_waypoints": ("nav_query_type", {"type": "waypoints"}),
-                }.get(cap)
+                }
+                special = special_map.get(cap)
                 if not special:
                     raise ValueError(f"无法为能力生成验收条件: {cap}")
-                self._add(task, special[0], special[1], java_str(goal.get("source", "user")))
+                template_id, criterion_params = special
+                self._add(
+                    task,
+                    template_id,
+                    criterion_params,
+                    java_str(goal.get("source", "user")),
+                )
             if cap == "navigation.add_waypoint" and goal.get("retain_destination") is not None:
                 self._add(
                     task,

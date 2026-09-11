@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import inspect
 import json
 from collections.abc import Callable
@@ -53,7 +54,7 @@ class InMemoryRunStore:
         if run.request_id:
             self.requests[run.request_id] = run.run_id
 
-    def list(self) -> list[RunRecord]:
+    def list(self) -> builtins.list[RunRecord]:
         return list(self.runs.values())
 
     def has_active_write_run(self, device_id: str) -> bool:
@@ -91,7 +92,7 @@ class InMemoryRunStore:
             await self._invoke(listener, event)
         return event
 
-    def events_after(self, id_: str, seq: int) -> list[RuntimeEvent]:
+    def events_after(self, id_: str, seq: int) -> builtins.list[RuntimeEvent]:
         run = self.find(id_)
         return [event for event in run.events if event.seq > seq] if run else []
 

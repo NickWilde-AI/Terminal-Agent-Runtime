@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from terminal_agent.config import Settings
+from terminal_agent.memory.context_builder import ContextBuilder
+from terminal_agent.memory.retriever import MemoryRetriever
 from terminal_agent.memory.service import MemoryService
 from terminal_agent.memory.store import MemoryStore
 from terminal_agent.memory.write_gate import MemoryWriteGate
-from terminal_agent.memory.retriever import MemoryRetriever
-from terminal_agent.memory.context_builder import ContextBuilder
 
 
 def _svc() -> MemoryService:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from terminal_agent.contracts import StateSnapshot
@@ -31,7 +32,7 @@ class MemoryService:
     def retriever(self) -> MemoryRetriever:
         return self._retriever
 
-    def list(self, session_id: str | None) -> list[MemoryEntry]:
+    def list(self, session_id: str | None) -> builtins.list[MemoryEntry]:
         return self.store.list_active(session_id)
 
     def try_write_from_utterance(
@@ -68,7 +69,7 @@ class MemoryService:
     def delete(self, id_: str) -> bool:
         return self.store.soft_delete(id_)
 
-    def mark_hits(self, memories: list[MemoryEntry] | None) -> None:
+    def mark_hits(self, memories: builtins.list[MemoryEntry] | None) -> None:
         if memories is None:
             return
         for entry in memories:
@@ -78,14 +79,14 @@ class MemoryService:
     def clear_session(self, session_id: str | None) -> None:
         self.store.clear_session(session_id)
 
-    def as_hints(self, memories: list[MemoryEntry]) -> list[dict[str, Any]]:
+    def as_hints(self, memories: builtins.list[MemoryEntry]) -> builtins.list[dict[str, Any]]:
         return [m.to_hint() for m in memories]
 
     # --- Harness NullMemory-compatible adapters ---
 
     async def compile_hints(
         self, session_id: str, text: str, snapshot: StateSnapshot
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         ctx = self._context_builder.build_for_compile(session_id, text, snapshot)
         return ctx.hints
 
@@ -93,11 +94,11 @@ class MemoryService:
         self,
         session_id: str,
         text: str | None,
-        goals: list[dict[str, Any]],
-        constraints: list[dict[str, Any]],
+        goals: builtins.list[dict[str, Any]],
+        constraints: builtins.list[dict[str, Any]],
         snapshot: StateSnapshot,
-        prior: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
+        prior: builtins.list[dict[str, Any]],
+    ) -> builtins.list[dict[str, Any]]:
         ctx = self._context_builder.build(
             session_id, text, goals, constraints, [], snapshot, prior
         )

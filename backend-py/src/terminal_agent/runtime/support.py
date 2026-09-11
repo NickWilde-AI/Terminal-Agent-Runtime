@@ -6,9 +6,9 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
-from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.contracts import (
     AgentRole,
+    CompiledTaskCandidate,
     DeviceTask,
     PlanDraft,
     ReviewDecision,
@@ -17,7 +17,6 @@ from terminal_agent.contracts import (
     TaskSpec,
 )
 from terminal_agent.runtime.task_binder import TaskBinder
-from terminal_agent.runtime.task_binder import action_for as shared_action_for
 
 
 class BudgetSettings(BaseModel):
