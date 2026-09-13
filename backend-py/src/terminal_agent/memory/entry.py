@@ -13,6 +13,7 @@ from terminal_agent.contracts import now
 class MemoryEntry:
     id: str | None = None
     session_id: str = "local"
+    tenant_id: str = "local"
     category: str | None = None  # preference | experience
     key: str | None = None
     value: str | None = None
@@ -29,6 +30,7 @@ class MemoryEntry:
         return {
             "id": self.id,
             "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
             "category": self.category,
             "key": self.key,
             "value": self.value,

@@ -42,8 +42,16 @@ class InMemoryRunStore:
         if listener in self._listeners:
             self._listeners.remove(listener)
 
-    def find_by_request_id(self, id_: str) -> RunRecord | None:
-        run_id = self.requests.get(id_)
+    def find_by_request_id(self, id_: str, tenant_id: str | None = None) -> RunRecord | None:
+        if tenant_id:
+            run_id = self.requests.get(f"{tenant_id}:{id_}")
+        else:
+            run_id = self.requests.get(id_)
+            if run_id is None:
+                for key, value in self.requests.items():
+                    if key.endswith(f":{id_}") or key == id_:
+                        run_id = value
+                        break
         return self.runs.get(run_id) if run_id else None
 
     def find(self, id_: str) -> RunRecord | None:
@@ -53,9 +61,16 @@ class InMemoryRunStore:
         self.runs[run.run_id] = run
         if run.request_id:
             self.requests[run.request_id] = run.run_id
+            self.requests[f"{run.tenant_id}:{run.request_id}"] = run.run_id
 
-    def list(self) -> builtins.list[RunRecord]:
-        return list(self.runs.values())
+    def list(self, tenant_id: str | None = None) -> builtins.list[RunRecord]:
+        runs = list(self.runs.values())
+        if tenant_id:
+            runs = [run for run in runs if run.tenant_id == tenant_id]
+        return runs
+
+    def active_count(self, tenant_id: str | None = None) -> int:
+        return sum(1 for run in self.list(tenant_id) if not run.is_terminal())
 
     def has_active_write_run(self, device_id: str) -> bool:
         return any(
@@ -79,6 +94,8 @@ class InMemoryRunStore:
                 goal_version=run.task.goal_version,
                 seq=run.events[-1].seq + 1 if run.events else 1,
                 action_id=str(payload["action_id"]) if payload.get("action_id") is not None else None,
+                tenant_id=run.tenant_id,
+                trace_id=run.trace_id,
             )
             run.events.append(event)
             run.touch()

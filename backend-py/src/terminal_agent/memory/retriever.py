@@ -22,8 +22,9 @@ class MemoryRetriever:
         session_id: str | None,
         user_text: str | None,
         goals: list[dict[str, Any]] | None,
+        tenant_id: str | None = None,
     ) -> list[MemoryEntry]:
-        active = self.store.list_active(session_id)
+        active = self.store.list_active(session_id, tenant_id)
         goal_domains = self._infer_domains(user_text, goals)
         current = datetime.now(UTC)
 

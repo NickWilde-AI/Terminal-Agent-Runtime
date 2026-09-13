@@ -157,6 +157,9 @@ class EvalRunner:
         out: dict[str, Any] = {"id": c.id, "category": c.category, "completable": c.completable}
         try:
             self.harness.release_eval_pause()
+            platform = getattr(getattr(self.harness, "executor", None), "platform", None)
+            if platform is not None:
+                platform.reset_eval_isolation()
             for r in self.store.list():
                 r.unresolved_unknown = False
                 if not r.is_terminal():

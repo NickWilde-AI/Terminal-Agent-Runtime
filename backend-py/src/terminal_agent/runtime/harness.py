@@ -17,8 +17,9 @@ from terminal_agent.contracts import (
     DeviceTask,
     ExecutionStatus,
     GoalOutcome,
+    OverallOutcome,
     PendingInteraction,
-    ReviewDecision,
+    PreflightDecision,
     RouteType,
     RunLifecycle,
     RunPhase,
@@ -27,6 +28,7 @@ from terminal_agent.contracts import (
     now,
 )
 from terminal_agent.device.port import DevicePort
+from terminal_agent.orchestration.platform import PlatformServices, sanitize_tenant_id
 from terminal_agent.persistence.sqlite import SqlitePersistence
 from terminal_agent.persistence.store import InMemoryRunStore
 from terminal_agent.runtime.executor import CapabilityExecutor
@@ -39,6 +41,9 @@ from terminal_agent.runtime.support import (
     TaskBinder,
     task_spec_from,
 )
+from terminal_agent.runtime.auditor import execution_evidence, should_replan, stamp_audit
+from terminal_agent.runtime.outcome import OutcomeAggregator
+from terminal_agent.runtime.preflight import PreflightGate
 from terminal_agent.runtime.verifier import Verifier
 
 
@@ -59,6 +64,7 @@ class HarnessService:
         settings: RuntimeSettings | None = None,
         memory: Any | None = None,
         router: ModelRouter | None = None,
+        platform: PlatformServices | None = None,
     ) -> None:
         self.store, self.device, self.model, self.binder = store, device, model, binder
         self.executor, self.verifier, self.persistence = executor, verifier, persistence
@@ -67,6 +73,8 @@ class HarnessService:
             memory or NullMemory(),
             router or ModelRouter(),
         )
+        self.platform = platform
+        self.preflight = PreflightGate(executor.registry, executor.policy)
         self._running: dict[str, asyncio.Task[None]] = {}
         self._deadlines: dict[str, asyncio.Task[None]] = {}
         self._admission = asyncio.Lock()
@@ -89,18 +97,40 @@ class HarnessService:
             await asyncio.sleep(0.02)
 
     async def create_run(
-        self, request_id: str | None, text: str, session: str | None = None, wait: bool = True
+        self,
+        request_id: str | None,
+        text: str,
+        session: str | None = None,
+        wait: bool = True,
+        tenant_id: str | None = None,
+        trace_id: str | None = None,
+        actor: str | None = None,
     ) -> RunRecord:
         if text is None or not text.strip() or len(text) > 4000:
             raise ValueError("请输入1至4000字的任务")
+        tenant = sanitize_tenant_id(tenant_id)
+        actor_id = (actor or "anonymous").strip()[:64] or "anonymous"
+        trace = (trace_id or "").strip() or new_id("tr")
         async with self._admission:
             if request_id:
-                old = self.store.find_by_request_id(request_id)
+                old = self.store.find_by_request_id(request_id, tenant)
                 if old:
                     original = old.task.binding_context.get("original_request", old.task.raw_text)
-                    if original != text or old.session_id != (session or "local"):
+                    if original != text or old.session_id != (session or "local") or old.tenant_id != tenant:
                         raise RuntimeError("同 requestId 不同正文")
                     return old
+            if self.platform:
+                quota_code = self.platform.quota.check(tenant, self.store.active_count(tenant))
+                if quota_code:
+                    self.platform.metrics.inc("quota_rejected")
+                    self.platform.audit.emit(
+                        "quota_rejected",
+                        tenant_id=tenant,
+                        actor=actor_id,
+                        result="denied",
+                        detail={"code": quota_code},
+                    )
+                    raise RuntimeError(quota_code)
             if self.store.has_active_write_run(self.device.device_id):
                 raise RuntimeError("同设备已有活动任务或未解决 UNKNOWN")
             budget = self.settings.budget
@@ -110,6 +140,9 @@ class HarnessService:
                 device_id=self.device.device_id,
                 environment_id=self.device.environment_id,
                 session_id=session or "local",
+                tenant_id=tenant,
+                trace_id=trace,
+                actor=actor_id,
             )
             run.task.run_id, run.task.raw_text = run.run_id, text
             run.task.binding_context["original_request"] = text
@@ -119,6 +152,16 @@ class HarnessService:
             run.budget.max_same_failure = budget.max_same_failure
             run.evaluation_snapshot.update(model_mode=self.model.mode(), model_id=self.router.active_model_id)
             self.store.save(run)
+            if self.platform:
+                self.platform.quota.note_created(tenant)
+                self.platform.metrics.inc("runs_created")
+                self.platform.audit.emit(
+                    "run_created",
+                    tenant_id=tenant,
+                    actor=actor_id,
+                    run_id=run.run_id,
+                    detail={"trace_id": trace},
+                )
             await self.store.append_event(
                 run,
                 "RUN_RECEIVED",
@@ -253,7 +296,9 @@ class HarnessService:
                 )
                 prior = self._prior(run)
                 hints = await _await(
-                    self.memory.plan_hints(run.session_id, task.raw_text, task.goals, task.constraints, snapshot, prior)
+                    self.memory.plan_hints(
+                        run.session_id, task.raw_text, task.goals, task.constraints, snapshot, prior, run.tenant_id
+                    )
                 )
                 await _await(self.model.request_context(run.run_id, version, run.budget.deadline, role=AgentRole.MAIN))
                 plan = await _await(
@@ -294,6 +339,23 @@ class HarnessService:
                 continue
             if self._stale(run, version, epoch):
                 continue
+            run.phase = RunPhase.PREFLIGHT
+            action_gate = self.preflight.check_action(run, cap, params, snapshot, version)
+            await self.store.append_event(run, "ACTION_PREFLIGHT", action_gate.to_map())
+            if action_gate.decision == PreflightDecision.STALE:
+                continue
+            if action_gate.decision == PreflightDecision.DENY:
+                await self._finish(
+                    run,
+                    RunLifecycle.STOPPED,
+                    action_gate.code or "PREFLIGHT_DENIED",
+                    action_gate.message or "动作预检拒绝",
+                    GoalOutcome.UNSATISFIED,
+                )
+                return
+            if action_gate.skip_write:
+                await self._conclude(run, version)
+                return
             run.phase = RunPhase.ACT
             action = await self.executor.execute_write(run, cap, params, version, snapshot)
             await _await(
@@ -358,14 +420,16 @@ class HarnessService:
         await self.store.append_event(
             run, "TASK_SPEC", {"agent_role": "MAIN", "task_spec": spec.to_map(), "goal_version": version}
         )
-        draft = review = None
         suggestions: list[str] = []
-        for round_ in range(2):
+        draft = None
+        max_rounds = max(1, run.budget.max_replans + 1)
+        for round_ in range(max_rounds):
             if self._stale(run, version, epoch):
                 await self.store.append_event(
                     run, "PLAN_DISCARDED", {"reason": "stale_before_planner", "goal_version": version, "round": round_}
                 )
                 return
+            snapshot = await self.executor.read(run, set(DeviceDomain))
             run.phase = RunPhase.PLAN
             run.budget.count_model()
             await self.store.append_event(
@@ -385,74 +449,82 @@ class HarnessService:
                 )
                 return
             await self.store.append_event(run, "PLAN_DRAFT", draft.to_map())
-            run.budget.count_model()
-            await self.store.append_event(
-                run,
-                "MODEL_REQUEST",
-                {"phase": "review", "agent_role": "REVIEWER", "goal_version": version, "revision_round": round_},
-            )
-            await _await(self.model.request_context(run.run_id, version, run.budget.deadline, role=AgentRole.REVIEWER))
-            review = await _await(self.model.review_plan(run.run_id, spec, draft))
-            if self._stale(run, version, epoch):
-                await self.store.append_event(
-                    run, "REVIEW_DISCARDED", {"planned_version": version, "agent_role": "REVIEWER"}
-                )
+            run.phase = RunPhase.PREFLIGHT
+            plan_gate = self.preflight.check_plan(run, spec, draft)
+            await self.store.append_event(run, "PLAN_PREFLIGHT", plan_gate.to_map())
+            if plan_gate.decision == PreflightDecision.STALE:
                 return
-            await self.store.append_event(run, "REVIEW_RESULT", review.to_map())
-            if review.decision == ReviewDecision.PASS:
-                break
-            if review.decision == ReviewDecision.REJECT:
-                reasons = review.violated_constraints or review.suggestions
-                if reasons:
-                    await self._finish(
-                        run,
-                        RunLifecycle.STOPPED,
-                        "REVIEW_REJECTED",
-                        "方案审核拒绝：" + "；".join(reasons),
-                        GoalOutcome.UNSATISFIED,
+            if plan_gate.decision == PreflightDecision.DENY:
+                if plan_gate.missing_goals and round_ + 1 < max_rounds:
+                    suggestions = plan_gate.missing_goals
+                    await self.store.append_event(
+                        run, "PLAN_PREFLIGHT_REVISE", {"missing_goals": plan_gate.missing_goals}
                     )
-                else:
-                    await self._wait_for(run, "CLARIFICATION", "方案审核未通过，请补充目标或约束")
-                return
-            if round_ == 0:
-                suggestions = review.suggestions
-                await self.store.append_event(
-                    run, "REVIEW_REVISE", {"suggestions": suggestions, "missing_goals": review.missing_goals}
-                )
-            else:
+                    try:
+                        run.budget.count_replan()
+                    except RuntimeError:
+                        await self._finish(
+                            run,
+                            RunLifecycle.STOPPED,
+                            "PREFLIGHT_DENIED",
+                            plan_gate.message or "计划预检未通过且无法再规划",
+                            GoalOutcome.UNSATISFIED,
+                        )
+                        return
+                    continue
                 await self._finish(
                     run,
                     RunLifecycle.STOPPED,
-                    "REVIEW_REVISE_EXHAUSTED",
-                    "方案审核要求修订但已达上限",
+                    plan_gate.code or "PREFLIGHT_DENIED",
+                    plan_gate.message or "计划预检未通过",
                     GoalOutcome.UNSATISFIED,
                 )
                 return
-        if draft is None or review is None or review.decision != ReviewDecision.PASS:
-            await self._finish(run, RunLifecycle.STOPPED, "REVIEW_INCOMPLETE", "未获得可执行方案", GoalOutcome.UNKNOWN)
-            return
-        if not draft.actions:
-            await self._conclude(run, version)
-            return
+            if not await self._execute_plan(run, draft, version, epoch):
+                return
+            if run.is_terminal() or run.pending:
+                return
+            if not await self._audit_and_maybe_replan(run, spec, draft, version, epoch):
+                return
+            suggestions = list(run.evaluation_snapshot.get("replan_suggestions") or [])
+            if not suggestions:
+                return
+        await self._conclude(run, version)
+
+    async def _execute_plan(self, run: RunRecord, draft: Any, version: int, epoch: int) -> bool:
         for planned_action in draft.actions:
             if self._stale(run, version, epoch):
                 await self.store.append_event(
                     run, "LATE_PLAN_IGNORED", {"agent_role": "PLANNER", "goal_version": version}
                 )
-                return
-            run.phase = RunPhase.ACT
+                return False
             fresh = await self.executor.read(run, set(DeviceDomain))
             cap, params = str(planned_action.get("capability_id")), self.binder.params(planned_action)
-            if cap in ("device.get_state", "device.read_state"):
+            run.phase = RunPhase.PREFLIGHT
+            action_gate = self.preflight.check_action(run, cap, params, fresh, version)
+            await self.store.append_event(run, "ACTION_PREFLIGHT", action_gate.to_map())
+            if action_gate.decision == PreflightDecision.STALE:
+                return False
+            if action_gate.decision == PreflightDecision.DENY:
+                await self._finish(
+                    run,
+                    RunLifecycle.STOPPED,
+                    action_gate.code or "PREFLIGHT_DENIED",
+                    action_gate.message or "动作预检拒绝",
+                    GoalOutcome.UNSATISFIED,
+                )
+                return False
+            if action_gate.skip_write or cap in ("device.get_state", "device.read_state"):
                 continue
+            run.phase = RunPhase.ACT
             action = await self.executor.execute_write(run, cap, params, version, fresh)
             if run.is_terminal() or run.pending:
-                return
+                return False
             if version != run.task.goal_version:
                 await self.store.append_event(
                     run, "LATE_RESULT_IGNORED", {"action_id": action.action_id, "planned_version": version}
                 )
-                return
+                return False
             if action.execution_status == ExecutionStatus.UNKNOWN:
                 await self._finish(
                     run,
@@ -461,11 +533,77 @@ class HarnessService:
                     "动作结果未知，已查询原动作；停止新写",
                     GoalOutcome.UNKNOWN,
                 )
-                return
+                return False
             if action.execution_status == ExecutionStatus.REJECTED:
                 await self._finish(run, RunLifecycle.STOPPED, "POLICY_DENIED", action.message, GoalOutcome.UNSATISFIED)
-                return
-        await self._conclude(run, version)
+                return False
+        return True
+
+    async def _audit_and_maybe_replan(self, run: RunRecord, spec: Any, draft: Any, version: int, epoch: int) -> bool:
+        if self._stale(run, version, epoch):
+            await self.store.append_event(run, "AUDIT_DISCARDED", {"planned_version": version, "agent_role": "REVIEWER"})
+            return False
+        run.phase = RunPhase.AUDIT
+        goal_results, snapshot = await self.verifier.verify_goals(run)
+        overall = OutcomeAggregator.aggregate(goal_results)
+        await self.store.append_event(
+            run,
+            "GOAL_RESULTS",
+            {"goal_results": [item.to_map() for item in goal_results], "agent_role": "VERIFIER"},
+        )
+        await self.store.append_event(
+            run, "OVERALL_OUTCOME", {"overall_outcome": overall.value, "agent": "OUTCOME_AGGREGATOR"}
+        )
+        run.budget.count_model()
+        await self.store.append_event(
+            run, "MODEL_REQUEST", {"phase": "audit", "agent_role": "REVIEWER", "goal_version": version}
+        )
+        await _await(self.model.request_context(run.run_id, version, run.budget.deadline, role=AgentRole.REVIEWER))
+        raw_audit = await _await(
+            self.model.audit_execution(
+                run.run_id,
+                spec,
+                draft,
+                execution_evidence(run),
+                snapshot,
+                goal_results,
+                overall,
+            )
+        )
+        audit = stamp_audit(
+            raw_audit,
+            goal_results,
+            overall,
+            run_id=run.run_id,
+            goal_version=version,
+            model_id=self.router.active_model_id,
+        )
+        if self._stale(run, version, epoch):
+            await self.store.append_event(run, "AUDIT_DISCARDED", {"planned_version": version, "agent_role": "REVIEWER"})
+            return False
+        await self.store.append_event(run, "AUDIT_RESULT", audit.to_map())
+        run.evaluation_snapshot.update(
+            goal_results=[item.to_map() for item in goal_results],
+            overall_outcome=overall.value,
+            audit={
+                "explanation": audit.explanation,
+                "replan_required": audit.replan_required,
+                "evidence_gaps": audit.evidence_gaps,
+            },
+        )
+        if should_replan(run, audit):
+            suggestions = audit.evidence_gaps or ([audit.replan_reason] if audit.replan_reason else ["replan remaining"])
+            run.evaluation_snapshot["replan_suggestions"] = suggestions
+            await self.store.append_event(run, "AUDIT_REPLAN", {"suggestions": suggestions})
+            return True
+        await self._conclude(
+            run,
+            version,
+            goal_results=goal_results,
+            overall=overall,
+            summary=audit.final_reply_draft or audit.explanation,
+        )
+        return False
 
     async def _compile(self, run: RunRecord) -> None:
         version, epoch, text = run.task.goal_version, self.router.epoch, run.task.raw_text or ""
@@ -474,7 +612,7 @@ class HarnessService:
             run, "MODEL_REQUEST", {"phase": "compile", "agent_role": "MAIN", "goal_version": version}
         )
         snapshot = await self.executor.read(run, set(DeviceDomain))
-        hints = await _await(self.memory.compile_hints(run.session_id, text, snapshot))
+        hints = await _await(self.memory.compile_hints(run.session_id, text, snapshot, run.tenant_id))
         await _await(self.model.request_context(run.run_id, version, run.budget.deadline, role=AgentRole.MAIN))
         candidate: CompiledTaskCandidate = await _await(self.model.compile_task(text, snapshot, hints))
         if self._stale(run, version, epoch):
@@ -558,30 +696,61 @@ class HarnessService:
             for a in run.actions
         ]
 
-    async def _conclude(self, run: RunRecord, version: int) -> None:
-        result = await self.verifier.verify_task(run)
+    async def _conclude(
+        self,
+        run: RunRecord,
+        version: int,
+        goal_results: list[Any] | None = None,
+        overall: OverallOutcome | None = None,
+        summary: str | None = None,
+    ) -> None:
+        if goal_results is None or overall is None:
+            computed, snapshot = await self.verifier.verify_goals(run)
+            goal_results = computed
+            overall = OutcomeAggregator.aggregate(goal_results)
+        else:
+            snapshot = await self.device.snapshot()
         if run.is_terminal() or run.task.goal_version != version:
             return
+        details = [
+            {
+                "criterion_id": item.criterion_id,
+                "template_id": item.template_id,
+                "params": item.params,
+                "status": "UNKNOWN"
+                if item.status.value in {"UNKNOWN", "PENDING"}
+                else "SATISFIED"
+                if item.status.value == "SATISFIED"
+                else "NOT_SATISFIED",
+                "goal_status": item.status.value,
+            }
+            for item in goal_results
+        ]
         run.evaluation_snapshot.update(
-            details=result.details, state=result.snapshot.state, revision=result.snapshot.revision
+            details=details,
+            goal_results=[item.to_map() for item in goal_results],
+            overall_outcome=overall.value,
+            state=snapshot.state,
+            revision=snapshot.revision,
         )
-        await self.store.append_event(run, "EVALUATE", {"outcome": result.outcome.value, "details": result.details})
-        partial = any(detail["status"] == "SATISFIED" for detail in result.details)
-        lifecycle = (
-            RunLifecycle.COMPLETED
-            if result.outcome == GoalOutcome.SATISFIED
-            else RunLifecycle.STOPPED
-            if result.outcome == GoalOutcome.UNKNOWN
-            else RunLifecycle.PARTIAL
-            if partial
-            else RunLifecycle.FAILED
+        await self.store.append_event(
+            run,
+            "EVALUATE",
+            {"outcome": overall.to_goal_outcome().value, "overall_outcome": overall.value, "details": details},
+        )
+        text = summary or (
+            "结果未知，保留已知动作事实，停止新写"
+            if overall == OverallOutcome.UNKNOWN
+            else "仍有目标未满足，请查看逐项证据"
+            if overall in {OverallOutcome.PARTIAL, OverallOutcome.FAILED}
+            else Verifier._summary(run, snapshot)
         )
         await self._finish(
             run,
-            lifecycle,
-            None if result.outcome == GoalOutcome.SATISFIED else result.outcome.value,
-            result.summary,
-            result.outcome,
+            overall.to_lifecycle(),
+            None if overall == OverallOutcome.COMPLETED else overall.value,
+            text,
+            overall.to_goal_outcome(),
         )
 
     async def _finish(
@@ -619,6 +788,31 @@ class HarnessService:
             run, "RUN_FINISHED", {"lifecycle": lifecycle.value, "stop_reason": reason, "summary": summary}
         )
         await self.persistence.persist_run(run)
+        self._on_terminal(run, lifecycle)
+
+    def _on_terminal(self, run: RunRecord, lifecycle: RunLifecycle) -> None:
+        if self.platform is None:
+            return
+        if lifecycle == RunLifecycle.COMPLETED:
+            self.platform.metrics.inc("runs_completed")
+        elif lifecycle == RunLifecycle.CANCELLED:
+            self.platform.metrics.inc("runs_cancelled")
+        elif lifecycle == RunLifecycle.INTERRUPTED:
+            self.platform.metrics.inc("runs_interrupted")
+            self.platform.dead_letters.add(run, "interrupted")
+        elif lifecycle in {RunLifecycle.FAILED, RunLifecycle.STOPPED, RunLifecycle.TIMED_OUT}:
+            self.platform.metrics.inc("runs_failed")
+            self.platform.dead_letters.add(run, lifecycle.value)
+        if run.unresolved_unknown:
+            self.platform.dead_letters.add(run, "unresolved_unknown")
+        self.platform.audit.emit(
+            "run_finished",
+            tenant_id=run.tenant_id,
+            actor=run.actor,
+            run_id=run.run_id,
+            result=lifecycle.value,
+            detail={"stop_reason": run.stop_reason},
+        )
 
     async def _wait_for(self, run: RunRecord, type_: str, question: str) -> None:
         if run.is_terminal():
@@ -803,14 +997,14 @@ class HarnessService:
             "note": "实验重置会先取消同设备活动任务，再重建模拟环境",
         }
 
-    def _get(self, id_: str) -> RunRecord:
+    def _get(self, id_: str, tenant_id: str | None = None) -> RunRecord:
         run = self.store.find(id_)
-        if run is None:
+        if run is None or (tenant_id and run.tenant_id != tenant_id):
             raise ValueError("run not found")
         return run
 
-    def list_runs(self) -> list[RunRecord]:
-        return sorted(self.store.list(), key=lambda r: r.created_at, reverse=True)
+    def list_runs(self, tenant_id: str | None = None) -> list[RunRecord]:
+        return sorted(self.store.list(tenant_id), key=lambda r: r.created_at, reverse=True)
 
     def replay(self, id_: str) -> dict[str, Any]:
         run = self._get(id_)
@@ -844,6 +1038,9 @@ class HarnessService:
             "updated_at": run.updated_at,
             "event_count": len(run.events),
             "defaults_rule_id": self.settings.defaults_rule_id,
+            "tenant_id": run.tenant_id,
+            "trace_id": run.trace_id,
+            "actor": run.actor,
         }
 
 

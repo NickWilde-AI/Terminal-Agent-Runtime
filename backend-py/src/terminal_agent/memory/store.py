@@ -43,10 +43,15 @@ class MemoryStore:
                   hit_count integer not null,
                   last_hit_at text,
                   active integer not null,
-                  note text
+                  note text,
+                  tenant_id text not null default 'local'
                 )
                 """
             )
+            try:
+                conn.execute("alter table memories add column tenant_id text not null default 'local'")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def save(self, entry: MemoryEntry) -> MemoryEntry:
@@ -60,6 +65,7 @@ class MemoryStore:
                 if (
                     existing.active
                     and existing.session_id == entry.session_id
+                    and existing.tenant_id == (entry.tenant_id or "local")
                     and existing.key == entry.key
                 ):
                     existing.active = False
@@ -68,15 +74,15 @@ class MemoryStore:
         try:
             with self._conn() as conn:
                 conn.execute(
-                    "update memories set active=0 where session_id=? and key=? and active=1",
-                    (entry.session_id, entry.key),
+                    "update memories set active=0 where session_id=? and tenant_id=? and key=? and active=1",
+                    (entry.session_id, entry.tenant_id or "local", entry.key),
                 )
                 conn.execute(
                     """
                     insert into memories(
                       id,session_id,category,key,value,domain,source_run_id,created_at,
-                      confidence,hit_count,last_hit_at,active,note
-                    ) values(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      confidence,hit_count,last_hit_at,active,note,tenant_id
+                    ) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     self._bind(entry),
                 )
@@ -85,20 +91,25 @@ class MemoryStore:
             raise RuntimeError(f"memory save failed: {exc}") from exc
         return entry
 
-    def list_active(self, session_id: str | None) -> list[MemoryEntry]:
+    def list_active(self, session_id: str | None, tenant_id: str | None = None) -> list[MemoryEntry]:
         self._ensure_init()
         sid = session_id or "local"
+        tenant = tenant_id or "local"
         if not self._use_sqlite:
             return sorted(
-                [m for m in self._memory_fallback if m.active and self._session_matches(m, sid)],
+                [
+                    m
+                    for m in self._memory_fallback
+                    if m.active and self._session_matches(m, sid) and (m.tenant_id or "local") == tenant
+                ],
                 key=lambda m: m.created_at or datetime.min,
                 reverse=True,
             )
         try:
             with self._conn() as conn:
                 rows = conn.execute(
-                    "select * from memories where active=1 and session_id=? order by created_at desc",
-                    (sid,),
+                    "select * from memories where active=1 and session_id=? and tenant_id=? order by created_at desc",
+                    (sid, tenant),
                 ).fetchall()
             return [self._from_row(row) for row in rows]
         except Exception as exc:  # noqa: BLE001
@@ -214,6 +225,7 @@ class MemoryStore:
             entry.last_hit_at.isoformat() if entry.last_hit_at else None,
             1 if entry.active else 0,
             entry.note,
+            entry.tenant_id or "local",
         )
 
     @staticmethod
@@ -233,4 +245,5 @@ class MemoryStore:
             last_hit_at=datetime.fromisoformat(last_hit) if last_hit else None,
             active=int(row["active"]) == 1,
             note=row["note"],
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "local",
         )

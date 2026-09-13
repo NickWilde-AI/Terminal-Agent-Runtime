@@ -67,22 +67,23 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
    ├──越权/不可做──▶ REJECT
    ├──明确指令──▶ FAST（主 Agent 单次理解 → DIRECT_ACTION）──┐
    │                                                         ▼
-   └──复杂目标──▶ 执行规划 Agent（PlanDraft）                 Policy / 确认
+   └──复杂目标──▶ 规划 Agent（PlanDraft）                     Policy / 确认
                       │                                      │
                       ▼                                      ▼
-                 审核 Agent（PASS/REVISE/REJECT）──▶ Capability / 工具执行
-                      ▲                                      │
-                      │ REVISE                               ▼
-                      └────────────── 写后回读与三维证据 ◀─────┘
-                                      │
-                                未满足则有界续跑 / 用户介入·取消
-                                      │
-                                    满足
-                                      ▼
-                               可验收终态 ──▶ Trace + Eval
+                 Plan / Action Preflight（零 LLM）──▶ Runtime 逐步执行 + 写后回读
+                                                             │
+                                                             ▼
+                                              审核 Agent 补查（只读）
+                                                             │
+                                                             ▼
+                                      Verifier 工具 → goal_results
+                                      Outcome Aggregator → overall_outcome
+                                                             │
+                                                             ▼
+                                      审核 Agent 解释 / 建议重规划 ──▶ 主 Agent 转达
 ```
 
-> 首图直接体现：**主 Agent → 执行规划 Agent → 审核 Agent**；FAST 跳过规划与审核，不是「不调模型」。
+> 首图直接体现：**主 Agent → 规划 Agent → Preflight → Runtime → 审核 Agent**；FAST 跳过规划与审核，不是「不调模型」。终态不由审核 Agent 决定。
 
 **智能终端标杆任务：**
 
@@ -111,9 +112,9 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 
 | 模块 | 你能得到什么 |
 | --- | --- |
-| **路由** | 纯聊天 `CHAT`；明确单目标走 `FAST`（主 Agent 一次理解 / `DIRECT_ACTION`，不进规划审核）；跨域 / 约束走 `MULTI_AGENT`；信息不足 `CLARIFY`；越权 `REJECT` |
-| **三 Agent 协作** | 主 Agent（`TaskSpec`）→ 执行规划 Agent（`PlanDraft`）→ 方案审核 Agent（`PASS/REVISE/REJECT`）；写设备只经 Runtime/Policy；终态只由 Verifier 判定 |
-| **可靠性层次（重要）** | **兜底是确定性组件，不是更多模型。** Policy（白名单/参数/约束）与 Verifier（状态谓词）决定能不能写、写完算不算成功；审核 Agent 也是模型，只能降低规划出错率，**不能**替代写后回读与终态验收 |
+| **路由** | 纯聊天 `CHAT`；明确单目标走 `FAST`（主 Agent 一次理解 / `DIRECT_ACTION`，不进规划与验收）；跨域 / 约束走 `MULTI_AGENT`；信息不足 `CLARIFY`；越权 `REJECT` |
+| **三 Agent 协作** | 主 Agent（`TaskSpec`）→ 规划 Agent（`PlanDraft`）→ Plan/Action Preflight → Runtime → 审核 Agent（只读补查）；Verifier 工具算 `goal_results`，Outcome Aggregator 算 `overall_outcome`；写设备只经 Runtime/Policy |
+| **可靠性层次（重要）** | **兜底是确定性组件，不是更多模型。** Policy / Preflight 决定能不能写；Verifier 与 Outcome Aggregator 决定算不算成功。审核 Agent 只能解释和建议重规划，**不能**改两级确定性结果，也不能替代写后回读 |
 | **任务编译（Task Schema / GoalCompiler）** | 自然语言 → 目标 / 约束 / 完成条件（`goals` / `constraints` / `criteria`）；模型候选必须覆盖编译结果，见 `GoalCompilerCoverageTest` |
 | **有界执行循环** | Observe → Plan → Policy → Act → Verify；步数与时间预算有上限，避免空转 |
 | **三维证据** | `execution_status` / `verification_status` / `attribution` 分离；ACK ≠ APPLIED；数值碰巧相等 ≠ 本任务造成 |
@@ -124,7 +125,7 @@ cp .env.example .env          # 填 API Key，或设 DEVICE_AGENT_MODEL_MODE=fak
 | **上下文工程** | 每步最小注入：当前目标、约束、相关状态、必要对话 |
 | **受控长期记忆** | 偏好写入门禁、隐私拦截、冲突仲裁、可审计；可参与默认值建议 |
 | **端云协议** | 统一 `ModelPort`；`cloud` / `edge` placement；epoch / goal_version 丢弃迟到旧计划 |
-| **模型适配** | 默认阶跃 Step；`openai_compatible` 走标准 Tool Calling（`tools` + `tool_calls` + `role=tool`）；CI 用 `fake`；主 Agent 任务编译解析失败不降级 Fake（Planner/Reviewer 解析失败可记 `parse_fallback` 并确定性兜底） |
+| **模型适配** | 默认阶跃 Step；`openai_compatible` 走标准 Tool Calling（`tools` + `tool_calls` + `role=tool`）；CI 用 `fake`；主 Agent 任务编译解析失败不降级 Fake（Planner/Auditor 解析失败可记 `parse_fallback` 并确定性兜底） |
 | **设备模拟器** | 本地真值状态、延迟、故障注入、外部扰动；导航 POI 搜索失败诚实；生活服务仅会话占位 |
 | **3D 工作台** | React Three Fiber 程序化车辆；车窗/空调气流/媒体频谱/导航路线只绑定 Simulator Snapshot |
 | **可观测** | Run 事件流（SSE）、只读回放、Trace 落盘；工作台实时展示 |

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from terminal_agent.api.deps import AppState, list_capabilities, set_model_placement, set_require_confirmation
+from terminal_agent.api.identity import RequestIdentity, identity_from
 from terminal_agent.device.port import FaultType
 from terminal_agent.memory.entry import MemoryEntry
 
@@ -18,10 +19,23 @@ def _state(request: Request) -> AppState:
     return cast(AppState, request.app.state.app_state)
 
 
+def _identity(request: Request) -> RequestIdentity:
+    default = getattr(_state(request).settings, "tenant_id", "local")
+    return identity_from(request, default)
+
+
+def _run_or_404(state: AppState, run_id: str, tenant_id: str):
+    run = state.store.find(run_id)
+    if run is None or run.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
+
+
 class CreateRunRequest(BaseModel):
     text: str = Field(min_length=1)
     requestId: str | None = None
     sessionId: str | None = None
+    tenantId: str | None = None
 
 
 class ClarifyRequest(BaseModel):
@@ -66,11 +80,17 @@ class MemoryWriteRequest(BaseModel):
 @router.post("/runs")
 async def create_run(req: CreateRunRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
+    ident = _identity(request)
+    tenant = req.tenantId or ident.tenant_id
     try:
-        run = await state.harness.create_run(req.requestId, req.text, req.sessionId, False)
+        run = await state.harness.create_run(
+            req.requestId, req.text, req.sessionId, False, tenant, ident.trace_id, ident.actor
+        )
         return state.harness.to_view(run)
     except RuntimeError as ex:
-        raise HTTPException(status_code=409, detail=str(ex)) from ex
+        code = str(ex)
+        status = 429 if code.startswith("TENANT_QUOTA") else 409
+        raise HTTPException(status_code=status, detail=code) from ex
     except Exception as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
@@ -78,23 +98,21 @@ async def create_run(req: CreateRunRequest, request: Request) -> dict[str, Any]:
 @router.get("/runs")
 async def list_runs(request: Request) -> dict[str, Any]:
     state = _state(request)
-    return {"runs": [state.harness.to_view(r) for r in state.harness.list_runs()]}
+    ident = _identity(request)
+    return {"runs": [state.harness.to_view(r) for r in state.harness.list_runs(ident.tenant_id)]}
 
 
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str, request: Request) -> dict[str, Any]:
     state = _state(request)
-    run = state.store.find(run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    run = _run_or_404(state, run_id, _identity(request).tenant_id)
     return state.harness.to_view(run)
 
 
 @router.get("/runs/{run_id}/events")
 async def events(run_id: str, request: Request, afterSeq: int = Query(0)) -> dict[str, Any]:
     state = _state(request)
-    if state.store.find(run_id) is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     events_ = state.store.events_after(run_id, afterSeq)
     return {
         "run_id": run_id,
@@ -106,8 +124,7 @@ async def events(run_id: str, request: Request, afterSeq: int = Query(0)) -> dic
 @router.get("/runs/{run_id}/events/stream")
 async def stream_events(run_id: str, request: Request, afterSeq: int = Query(0)) -> Any:
     state = _state(request)
-    if state.store.find(run_id) is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     assert state.sse_hub is not None
     return state.sse_hub.subscribe_run(run_id, afterSeq)
 
@@ -122,6 +139,7 @@ async def stream_device(request: Request) -> Any:
 @router.get("/runs/{run_id}/replay")
 async def replay(run_id: str, request: Request) -> dict[str, Any]:
     state = _state(request)
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     try:
         return state.harness.replay(run_id)
     except ValueError as ex:
@@ -131,12 +149,14 @@ async def replay(run_id: str, request: Request) -> dict[str, Any]:
 @router.post("/runs/{run_id}/cancel")
 async def cancel(run_id: str, request: Request) -> dict[str, Any]:
     state = _state(request)
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     return state.harness.to_view(await state.harness.cancel(run_id))
 
 
 @router.post("/runs/{run_id}/clarify")
 async def clarify(run_id: str, req: ClarifyRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     try:
         return state.harness.to_view(await state.harness.answer_clarification(run_id, req.answer))
     except RuntimeError as ex:
@@ -146,6 +166,7 @@ async def clarify(run_id: str, req: ClarifyRequest, request: Request) -> dict[st
 @router.post("/runs/{run_id}/intervene")
 async def intervene(run_id: str, req: InterveneRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     try:
         return state.harness.to_view(
             await state.harness.intervene(run_id, req.type, req.text, req.expectedGoalVersion)
@@ -159,6 +180,7 @@ async def intervene(run_id: str, req: InterveneRequest, request: Request) -> dic
 @router.post("/runs/{run_id}/answer")
 async def answer(run_id: str, req: AnswerRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
+    _run_or_404(state, run_id, _identity(request).tenant_id)
     try:
         return state.harness.to_view(
             await state.harness.answer_pending(
@@ -258,6 +280,16 @@ async def meta(request: Request) -> dict[str, Any]:
         "sse_enabled": True,
         "multi_agent": True,
         "agent_roles": ["MAIN", "PLANNER", "REVIEWER"],
+        "tenant_id": state.settings.tenant_id,
+        "execution_environment": state.settings.execution_environment,
+        "auth_required": bool(state.settings.http_api_key),
+        "platform": {
+            "multi_tenant": True,
+            "metrics": True,
+            "audit": True,
+            "circuit_breaker": state.settings.circuit_breaker_failures > 0,
+            "quotas": True,
+        },
         "disclaimer": (
             "智能终端 Agent Runtime；本地默认设备模拟器联调，模型为阶跃 Step（OpenAI-compatible），"
             "端云共用 ModelPort。复杂任务走主 Agent / 规划 / 审核三角色，写设备仍只经 Runtime。"
@@ -265,12 +297,55 @@ async def meta(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get("/health")
+async def health(request: Request) -> dict[str, Any]:
+    state = _state(request)
+    return {
+        "status": "ok",
+        "runtime": "python",
+        "model_mode": state.model.mode(),
+        "persistence": state.settings.persistence,
+        "execution_environment": state.settings.execution_environment,
+        "tenant_default": state.settings.tenant_id,
+    }
+
+
+@router.get("/metrics")
+async def metrics(request: Request) -> dict[str, Any]:
+    state = _state(request)
+    if state.platform is None:
+        return {"available": False}
+    snap = state.platform.snapshot()
+    snap["tenant_id"] = _identity(request).tenant_id
+    return snap
+
+
+@router.get("/ops/dead-letters")
+async def dead_letters(request: Request) -> dict[str, Any]:
+    state = _state(request)
+    if state.platform is None:
+        return {"items": []}
+    return {"items": state.platform.dead_letters.list(_identity(request).tenant_id)}
+
+
+@router.get("/ops/audit")
+async def audit_tail(request: Request, limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
+    state = _state(request)
+    if state.platform is None:
+        return {"records": []}
+    tenant = _identity(request).tenant_id
+    records = [row for row in state.platform.audit.tail(limit) if row.get("tenant_id") == tenant]
+    return {"records": records}
+
+
 @router.get("/memory")
 async def list_memory(request: Request, sessionId: str = Query("web")) -> dict[str, Any]:
     state = _state(request)
+    tenant = _identity(request).tenant_id
     return {
         "session_id": sessionId,
-        "memories": [m.to_map() for m in state.memory.list(sessionId)],
+        "tenant_id": tenant,
+        "memories": [m.to_map() for m in state.memory.list(sessionId, tenant)],
         "note": "长期记忆只影响默认值建议，不越过 Policy",
     }
 
@@ -278,12 +353,14 @@ async def list_memory(request: Request, sessionId: str = Query("web")) -> dict[s
 @router.post("/memory")
 async def write_memory(req: MemoryWriteRequest, request: Request) -> dict[str, Any]:
     state = _state(request)
+    tenant = _identity(request).tenant_id
     if req.utterance is not None and str(req.utterance).strip():
         return state.memory.try_write_from_utterance(
-            req.utterance, req.sessionId or "web", req.sourceRunId
+            req.utterance, req.sessionId or "web", req.sourceRunId, tenant
         )
     entry = MemoryEntry(
         session_id=req.sessionId or "web",
+        tenant_id=tenant,
         category=req.category or "preference",
         key=req.key or "",
         value=req.value or "",
@@ -297,7 +374,11 @@ async def write_memory(req: MemoryWriteRequest, request: Request) -> dict[str, A
 
 @router.delete("/memory/{memory_id}")
 async def delete_memory(memory_id: str, request: Request) -> dict[str, Any]:
-    ok = _state(request).memory.delete(memory_id)
+    state = _state(request)
+    found = state.memory_store.find_by_id(memory_id)
+    if found is None or (found.tenant_id or "local") != _identity(request).tenant_id:
+        raise HTTPException(status_code=404, detail="memory not found")
+    ok = state.memory.delete(memory_id)
     if not ok:
         raise HTTPException(status_code=404, detail="memory not found")
     return {"ok": True, "id": memory_id}

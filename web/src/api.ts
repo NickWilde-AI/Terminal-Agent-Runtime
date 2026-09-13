@@ -55,6 +55,9 @@ export type RunView = {
   model_mode?: string
   event_count?: number
   persistence?: string
+  tenant_id?: string
+  trace_id?: string
+  actor?: string
 }
 
 export type RuntimeEvent = {

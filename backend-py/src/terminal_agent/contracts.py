@@ -59,7 +59,9 @@ class RunLifecycle(StrEnum):
 class RunPhase(StrEnum):
     COMPILE = "COMPILE"
     PLAN = "PLAN"
+    PREFLIGHT = "PREFLIGHT"
     ACT = "ACT"
+    AUDIT = "AUDIT"
     WAIT = "WAIT"
     FINISH = "FINISH"
 
@@ -108,6 +110,36 @@ class GoalOutcome(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class GoalResultStatus(StrEnum):
+    SATISFIED = "SATISFIED"
+    UNSATISFIED = "UNSATISFIED"
+    UNKNOWN = "UNKNOWN"
+    PENDING = "PENDING"
+    SCHEDULED = "SCHEDULED"
+
+
+class OverallOutcome(StrEnum):
+    COMPLETED = "COMPLETED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
+
+    def to_goal_outcome(self) -> GoalOutcome:
+        if self == OverallOutcome.COMPLETED:
+            return GoalOutcome.SATISFIED
+        if self == OverallOutcome.UNKNOWN:
+            return GoalOutcome.UNKNOWN
+        return GoalOutcome.UNSATISFIED
+
+    def to_lifecycle(self) -> "RunLifecycle":
+        return {
+            OverallOutcome.COMPLETED: RunLifecycle.COMPLETED,
+            OverallOutcome.PARTIAL: RunLifecycle.PARTIAL,
+            OverallOutcome.FAILED: RunLifecycle.FAILED,
+            OverallOutcome.UNKNOWN: RunLifecycle.STOPPED,
+        }[self]
+
+
 class PolicyDecision(StrEnum):
     ALLOW = "ALLOW"
     DENY = "DENY"
@@ -120,10 +152,18 @@ class ReviewDecision(StrEnum):
     REJECT = "REJECT"
 
 
+class PreflightDecision(StrEnum):
+    ALLOW = "ALLOW"
+    DENY = "DENY"
+    WAIT_CONFIRMATION = "WAIT_CONFIRMATION"
+    STALE = "STALE"
+
+
 class AgentRole(StrEnum):
     MAIN = "MAIN"
     PLANNER = "PLANNER"
     REVIEWER = "REVIEWER"
+    AUDITOR = "REVIEWER"
 
 
 class ChangeSource(StrEnum):
@@ -297,6 +337,8 @@ class RuntimeEvent(RuntimeModel):
     action_id: str | None = None
     type: str
     payload: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: str | None = None
+    trace_id: str | None = None
 
 
 class RunRecord(RuntimeModel):
@@ -305,6 +347,9 @@ class RunRecord(RuntimeModel):
     device_id: str
     environment_id: str
     session_id: str = "local"
+    tenant_id: str = "local"
+    trace_id: str | None = None
+    actor: str = "anonymous"
     lifecycle: RunLifecycle = RunLifecycle.RECEIVED
     phase: RunPhase = RunPhase.COMPILE
     route_type: RouteType | None = None
@@ -397,6 +442,51 @@ class ReviewResult(RuntimeModel):
     agent_role: str = "REVIEWER"
     model_id: str | None = None
     prompt_version: str = "review-v1"
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+    def to_map(self) -> dict[str, Any]:
+        return self.model_dump(exclude={"raw"} if not self.raw else set())
+
+
+class GoalResult(RuntimeModel):
+    criterion_id: str
+    template_id: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    required: bool = True
+    status: GoalResultStatus
+    detail: str | None = None
+
+    def to_map(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
+class PreflightResult(RuntimeModel):
+    decision: PreflightDecision = PreflightDecision.DENY
+    code: str | None = None
+    message: str | None = None
+    missing_goals: list[str] = Field(default_factory=list)
+    violated_constraints: list[str] = Field(default_factory=list)
+    risky_actions: list[str] = Field(default_factory=list)
+    skip_write: bool = False
+    level: str = "PLAN"
+
+    def to_map(self) -> dict[str, Any]:
+        return self.model_dump()
+
+
+class AuditResult(RuntimeModel):
+    evidence_gaps: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    replan_required: bool = False
+    replan_reason: str | None = None
+    final_reply_draft: str | None = None
+    goal_results: list[GoalResult] = Field(default_factory=list)
+    overall_outcome: OverallOutcome | None = None
+    goal_version: int = 0
+    run_id: str | None = None
+    agent_role: str = "REVIEWER"
+    model_id: str | None = None
+    prompt_version: str = "audit-v1"
     raw: dict[str, Any] = Field(default_factory=dict)
 
     def to_map(self) -> dict[str, Any]:

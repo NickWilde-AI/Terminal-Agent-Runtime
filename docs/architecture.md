@@ -33,8 +33,8 @@ Terminal Agent Runtime（智能终端 Agent Runtime）面向智能终端提供 A
 
 | 模块 | 路径 | 职责 |
 | --- | --- | --- |
-| Harness / Runtime | `backend-py/src/terminal_agent/runtime/` | 有界执行循环、版本、取消、验收；`GoalCompiler` 编译目标；`MULTI_AGENT` 路径串起规划/审核 |
-| Agent contracts | `backend-py/src/terminal_agent/contracts.py`（及 `agent/` 再导出） | `TaskSpec` / `PlanDraft` / `ReviewResult` / `RouterDecision` |
+| Harness / Runtime | `backend-py/src/terminal_agent/runtime/` | 有界执行循环、版本、取消、验收；`GoalCompiler` 编译目标；`MULTI_AGENT` 路径串起规划 / Preflight / 验收 |
+| Agent contracts | `backend-py/src/terminal_agent/contracts.py`（及 `agent/` 再导出） | `TaskSpec` / `PlanDraft` / `PreflightResult` / `AuditResult` / `RouterDecision` |
 | DevicePort | `backend-py/src/terminal_agent/device/` | 设备适配边界；Harness / Policy / Verifier 不直接依赖 Simulator 内部类型 |
 | Policy | `backend-py/src/terminal_agent/policy/` | 白名单、约束、确认门禁 |
 | Memory | `backend-py/src/terminal_agent/memory/` | 上下文工程与受控长期记忆（本仓为 SQLite 规则版，不是 Milvus） |

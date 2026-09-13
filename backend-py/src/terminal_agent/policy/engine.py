@@ -7,6 +7,7 @@ from typing import Any
 
 from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.contracts import PolicyDecision, RunRecord
+from terminal_agent.policy.rules import GovernanceRules
 
 
 @dataclass(frozen=True)
@@ -17,13 +18,35 @@ class PolicyResult:
 
 
 class PolicyEngine:
-    def __init__(self, registry: CapabilityRegistry, require_confirmation: bool = False) -> None:
+    def __init__(
+        self,
+        registry: CapabilityRegistry,
+        require_confirmation: bool = False,
+        rules: GovernanceRules | None = None,
+    ) -> None:
         self.registry, self.require_confirmation = registry, require_confirmation
+        self.rules = rules or GovernanceRules()
 
-    def decide(self, run: RunRecord, capability_id: str, params: dict[str, Any]) -> PolicyResult:
+    def decide(
+        self,
+        run: RunRecord,
+        capability_id: str,
+        params: dict[str, Any],
+        consume_approval: bool = True,
+    ) -> PolicyResult:
         validation = self.registry.validate(capability_id, params)
         if not validation.ok:
             return PolicyResult(PolicyDecision.DENY, validation.code, validation.message)
+        definition = self.registry.get(capability_id)
+        if definition and definition.write:
+            if self.rules.writes_paused():
+                return PolicyResult(PolicyDecision.DENY, "WRITES_PAUSED", "治理开关：当前禁止写设备")
+            if self.rules.forbidden_in_environment(capability_id):
+                return PolicyResult(
+                    PolicyDecision.DENY, "ENV_FORBIDDEN", f"环境 {self.rules.execution_environment} 禁止 {capability_id}"
+                )
+            if self.rules.outside_work_hours():
+                return PolicyResult(PolicyDecision.DENY, "OUTSIDE_WORK_HOURS", "非工作时间禁止写设备")
         for constraint in run.task.constraints:
             type_ = str(constraint.get("type", ""))
             if type_ == "forbid_action" and capability_id == str(constraint.get("capability_id")):
@@ -42,20 +65,21 @@ class PolicyEngine:
         authorized = run.task.binding_context.get("authorized_device_id")
         if authorized is not None and run.device_id != str(authorized):
             return PolicyResult(PolicyDecision.DENY, "DEVICE_MISMATCH", "会话未授权该设备")
-        definition = self.registry.get(capability_id)
-        if (
-            self.require_confirmation
-            and definition
+        needs_confirm = bool(
+            definition
             and definition.write
             and not run.task.binding_context.get("force_allow_write")
-        ):
+            and (self.require_confirmation or self.rules.requires_confirmation(capability_id))
+        )
+        if needs_confirm:
             approved = run.task.binding_context.get("approved_action")
             if isinstance(approved, dict) and approved == {
                 "capability_id": capability_id,
                 "params": params,
                 "goal_version": run.task.goal_version,
             }:
-                del run.task.binding_context["approved_action"]
+                if consume_approval:
+                    del run.task.binding_context["approved_action"]
                 return PolicyResult(PolicyDecision.ALLOW)
             return PolicyResult(PolicyDecision.REQUIRE_CONFIRMATION, "REQUIRE_CONFIRMATION", "演示策略：写操作需确认")
         return PolicyResult(PolicyDecision.ALLOW)

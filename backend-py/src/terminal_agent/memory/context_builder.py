@@ -31,8 +31,9 @@ class ContextBuilder:
         criteria: list[dict[str, Any]] | None,
         observation: StateSnapshot | None,
         prior_actions: list[dict[str, Any]] | None,
+        tenant_id: str | None = None,
     ) -> BuiltContext:
-        memories = self.retriever.retrieve(session_id, user_text, goals)
+        memories = self.retriever.retrieve(session_id, user_text, goals, tenant_id)
         hints = [m.to_hint() for m in memories]
         payload: dict[str, Any] = {
             "goals": goals or [],
@@ -52,8 +53,9 @@ class ContextBuilder:
         session_id: str | None,
         user_text: str | None,
         observation: StateSnapshot | None,
+        tenant_id: str | None = None,
     ) -> BuiltContext:
-        return self.build(session_id, user_text, [], [], [], observation, [])
+        return self.build(session_id, user_text, [], [], [], observation, [], tenant_id)
 
     @staticmethod
     def _summarize_actions(prior_actions: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

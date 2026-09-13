@@ -3,7 +3,7 @@
 本仓库的**不可变核心**是：
 
 - **Harness**：任务状态机、路由、Policy、写后回读、取消隔离、评测  
-- **Agent**：主 Agent / 执行规划 Agent / 审核 Agent（或 FAST 快路径）
+- **Agent**：主 Agent / 规划 Agent / 审核 Agent（或 FAST 快路径）
 
 业务域通过 **DomainModule + Capability + DevicePort** 接入，**不要改写主循环**。
 

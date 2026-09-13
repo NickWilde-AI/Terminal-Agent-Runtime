@@ -1,4 +1,4 @@
-"""Evidence-based verifier: the sole authority allowed to complete a run."""
+"""Deterministic verifier tool: computes per-goal results, never overall_outcome."""
 
 from __future__ import annotations
 
@@ -12,12 +12,15 @@ from terminal_agent.contracts import (
     Criterion,
     ExecutionStatus,
     GoalOutcome,
+    GoalResult,
+    GoalResultStatus,
     RunRecord,
     StateSnapshot,
     VerificationStatus,
     now,
 )
 from terminal_agent.device.port import DevicePort
+from terminal_agent.runtime.outcome import OutcomeAggregator
 
 
 @dataclass
@@ -32,16 +35,32 @@ class Verifier:
     def __init__(self, device: DevicePort) -> None:
         self.device = device
 
-    async def verify_task(self, run: RunRecord) -> VerificationResult:
+    async def verify_goals(self, run: RunRecord) -> tuple[list[GoalResult], StateSnapshot]:
         try:
             run.budget.count_tool()
             snapshot = await self.device.read_state(None)
         except Exception:
             snapshot = await self.device.snapshot()
-            return VerificationResult(
-                GoalOutcome.UNKNOWN,
-                "验证不可用，不能确认目标已满足",
-                [{"status": "UNKNOWN", "detail": "读取不可用"}],
+            return (
+                [
+                    GoalResult(
+                        criterion_id=criterion.criterion_id,
+                        template_id=criterion.template_id,
+                        params=criterion.params,
+                        required=criterion.required,
+                        status=GoalResultStatus.UNKNOWN,
+                        detail="读取不可用",
+                    )
+                    for criterion in run.task.criteria
+                ]
+                or [
+                    GoalResult(
+                        criterion_id="unavailable",
+                        template_id="read",
+                        status=GoalResultStatus.UNKNOWN,
+                        detail="读取不可用",
+                    )
+                ],
                 snapshot,
             )
         fresh = (
@@ -49,26 +68,62 @@ class Verifier:
             and snapshot.observed_at > now() - timedelta(seconds=2)
             and snapshot.environment_id == run.environment_id
         )
+        unresolved = run.unresolved_unknown or any(a.execution_status == ExecutionStatus.UNKNOWN for a in run.actions)
+        results: list[GoalResult] = []
+        for criterion in run.task.criteria:
+            scheduled = bool(criterion.params.get("scheduled")) or criterion.template_id.startswith("scheduled_")
+            if scheduled:
+                status = GoalResultStatus.SCHEDULED
+                detail = "未来业务结果，当前只验收调度动作"
+            elif unresolved or not fresh:
+                status = GoalResultStatus.UNKNOWN
+                detail = "状态不新鲜或存在未知写动作"
+            elif self.check(criterion, snapshot):
+                status = GoalResultStatus.SATISFIED
+                detail = None
+            else:
+                status = GoalResultStatus.UNSATISFIED
+                detail = "完成条件未满足"
+            results.append(
+                GoalResult(
+                    criterion_id=criterion.criterion_id,
+                    template_id=criterion.template_id,
+                    params=criterion.params,
+                    required=criterion.required,
+                    status=status,
+                    detail=detail,
+                )
+            )
+        if (unresolved or not fresh) and not results:
+            results.append(
+                GoalResult(
+                    criterion_id="task",
+                    template_id="freshness",
+                    required=True,
+                    status=GoalResultStatus.UNKNOWN,
+                    detail="状态不新鲜或存在未知写动作",
+                )
+            )
+        return results, snapshot
+
+    async def verify_task(self, run: RunRecord) -> VerificationResult:
+        results, snapshot = await self.verify_goals(run)
+        overall = OutcomeAggregator.aggregate(results)
+        outcome = overall.to_goal_outcome()
         details = [
             {
-                "criterion_id": criterion.criterion_id,
-                "template_id": criterion.template_id,
-                "params": criterion.params,
+                "criterion_id": item.criterion_id,
+                "template_id": item.template_id,
+                "params": item.params,
                 "status": "UNKNOWN"
-                if not fresh
+                if item.status in {GoalResultStatus.UNKNOWN, GoalResultStatus.PENDING}
                 else "SATISFIED"
-                if self.check(criterion, snapshot)
+                if item.status == GoalResultStatus.SATISFIED
                 else "NOT_SATISFIED",
+                "goal_status": item.status.value,
             }
-            for criterion in run.task.criteria
+            for item in results
         ]
-        unresolved = run.unresolved_unknown or any(a.execution_status == ExecutionStatus.UNKNOWN for a in run.actions)
-        if unresolved or not fresh:
-            outcome = GoalOutcome.UNKNOWN
-        elif details and all(d["status"] == "SATISFIED" for d in details):
-            outcome = GoalOutcome.SATISFIED
-        else:
-            outcome = GoalOutcome.UNSATISFIED
         summary = (
             "结果未知，保留已知动作事实，停止新写"
             if outcome == GoalOutcome.UNKNOWN

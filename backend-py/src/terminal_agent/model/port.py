@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol
 
-from terminal_agent.agent.contracts import CompiledTaskCandidate, PlanDraft, ReviewResult, TaskSpec
+from terminal_agent.agent.contracts import (
+    AuditResult,
+    CompiledTaskCandidate,
+    GoalResult,
+    OverallOutcome,
+    PlanDraft,
+    ReviewResult,
+    TaskSpec,
+)
 from terminal_agent.domain.models import AgentRole, StateSnapshot
 
 
@@ -41,6 +49,17 @@ class ModelPort(Protocol):
     ) -> PlanDraft: ...
 
     async def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult: ...
+
+    async def audit_execution(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        draft: PlanDraft | None,
+        evidence: list[dict[str, Any]],
+        observation: StateSnapshot,
+        goal_results: list[GoalResult],
+        overall_outcome: OverallOutcome,
+    ) -> AuditResult: ...
 
     async def request_context(
         self,

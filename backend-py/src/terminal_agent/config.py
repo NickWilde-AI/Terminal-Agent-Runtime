@@ -66,9 +66,23 @@ class Settings(BaseSettings):
     max_replans: int = 2
     max_same_failure: int = 2
 
+    # Platform / governance (Phase-1 local production-ready layer)
+    tenant_id: str = "local"
+    http_api_key: str = ""
+    execution_environment: str = "sim"
+    deny_writes: bool = False
+    max_concurrent_runs: int = 8
+    max_runs_per_minute: int = 0
+    circuit_breaker_failures: int = 0
+    high_risk_capabilities: str = ""
+    work_hours_start: int | None = None
+    work_hours_end: int | None = None
+    audit_log_dir: str = "./data/audit"
+
     def ensure_dirs(self) -> None:
         Path(self.event_log_dir).mkdir(parents=True, exist_ok=True)
         Path(self.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.audit_log_dir).mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

@@ -8,8 +8,11 @@ from pydantic import BaseModel
 
 from terminal_agent.contracts import (
     AgentRole,
+    AuditResult,
     CompiledTaskCandidate,
     DeviceTask,
+    GoalResult,
+    OverallOutcome,
     PlanDraft,
     ReviewDecision,
     ReviewResult,
@@ -59,6 +62,16 @@ class ModelPort(Protocol):
         revision_round: int,
     ) -> PlanDraft: ...
     async def review_plan(self, run_id: str, task_spec: TaskSpec, draft: PlanDraft) -> ReviewResult: ...
+    async def audit_execution(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        draft: PlanDraft | None,
+        evidence: list[dict[str, Any]],
+        observation: StateSnapshot,
+        goal_results: list[GoalResult],
+        overall_outcome: OverallOutcome,
+    ) -> AuditResult: ...
     async def request_context(
         self,
         run_id: str,
@@ -99,7 +112,9 @@ class ModelRouter:
 
 
 class NullMemory:
-    async def compile_hints(self, session_id: str, text: str, snapshot: StateSnapshot) -> list[dict[str, Any]]:
+    async def compile_hints(
+        self, session_id: str, text: str, snapshot: StateSnapshot, tenant_id: str | None = None
+    ) -> list[dict[str, Any]]:
         return []
 
     async def plan_hints(
@@ -110,6 +125,7 @@ class NullMemory:
         constraints: list[dict[str, Any]],
         snapshot: StateSnapshot,
         prior: list[dict[str, Any]],
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
         return []
 

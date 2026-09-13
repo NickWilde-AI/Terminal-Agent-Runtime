@@ -188,7 +188,7 @@ async def test_multi_agent_trace_and_reviewer(tmp_path) -> None:
     fast = await harness.create_run(None, "把空调设为 23 度", "test-fast", True)
     assert fast.route_type and fast.route_type.value == "FAST"
     events = store.events_after(fast.run_id, 0)
-    assert not any(e.type in {"PLAN_DRAFT", "REVIEW_RESULT"} for e in events)
+    assert not any(e.type in {"PLAN_DRAFT", "REVIEW_RESULT", "PLAN_PREFLIGHT", "AUDIT_RESULT"} for e in events)
 
     await _reset(harness, sim, store)
     multi = await harness.create_run(
@@ -200,7 +200,8 @@ async def test_multi_agent_trace_and_reviewer(tmp_path) -> None:
     assert multi.route_type and multi.route_type.value == "MULTI_AGENT"
     events = store.events_after(multi.run_id, 0)
     types = {e.type for e in events}
-    assert {"TASK_SPEC", "PLAN_DRAFT", "REVIEW_RESULT"} <= types
+    assert {"TASK_SPEC", "PLAN_DRAFT", "PLAN_PREFLIGHT", "GOAL_RESULTS", "OVERALL_OUTCOME", "AUDIT_RESULT"} <= types
+    assert "REVIEW_RESULT" not in types
     assert not any(str(a.capability_id).startswith("window.") for a in multi.actions)
 
     spec = TaskSpec(

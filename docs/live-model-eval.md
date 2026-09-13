@@ -13,7 +13,7 @@
 | 门禁 | Agent `false_success=0` | 只作公开证据；失败要诚实写清 |
 | 设备 | 本地 Simulator | 同左 |
 
-**可靠性层次不变：** 模型只提案；Policy / Verifier 确定性兜底；审核 Agent 不能替代写后回读。
+**可靠性层次不变：** 模型只提案；Policy / Preflight / Verifier / Outcome Aggregator 确定性兜底；审核 Agent 不能替代写后回读，也不能改 `goal_results` 或 `overall_outcome`。
 
 ## 最近一次公开摘要
 

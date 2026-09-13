@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from terminal_agent.api.auth import ApiKeyMiddleware
 from terminal_agent.api.deps import AppState, build_app_state
 from terminal_agent.api.routes import router
 from terminal_agent.api.sse import SseHub
@@ -36,7 +37,7 @@ def _resolve_web_dist(web_dist: str) -> Path | None:
 
 
 def create_app(state: AppState | None = None) -> FastAPI:
-    settings = get_settings()
+    settings = state.settings if state is not None else get_settings()
     prebuilt = state
 
     @asynccontextmanager
@@ -65,6 +66,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(ApiKeyMiddleware, settings=settings)
     app.include_router(router)
 
     dist = _resolve_web_dist(settings.web_dist)

@@ -254,6 +254,8 @@ export default function App() {
             <span className="badge">{String(meta?.model_id ?? '—')}</span>
             <span className="badge">placement {String(meta?.model_placement ?? 'cloud')}</span>
             <span className="badge">环境 {device?.environment_id ?? '—'}</span>
+            <span className="badge">租户 {String(meta?.tenant_id ?? 'local')}</span>
+            <span className="badge">env {String(meta?.execution_environment ?? 'sim')}</span>
             {replayMode && <span className="badge warn">历史回放（只读）</span>}
           </div>
           <p className="muted" style={{ margin: '0.55rem 0 0' }}>

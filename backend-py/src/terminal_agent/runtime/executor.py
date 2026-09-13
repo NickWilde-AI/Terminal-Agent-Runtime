@@ -22,6 +22,7 @@ from terminal_agent.contracts import (
     now,
 )
 from terminal_agent.device.port import DeviceException, DevicePort
+from terminal_agent.orchestration.platform import PlatformServices
 from terminal_agent.persistence.store import InMemoryRunStore
 from terminal_agent.policy.engine import PolicyEngine
 
@@ -34,9 +35,11 @@ class CapabilityExecutor:
         policy: PolicyEngine,
         store: InMemoryRunStore,
         fresh_window_ms: int = 2000,
+        platform: PlatformServices | None = None,
     ) -> None:
         self.device, self.registry, self.policy, self.store = device, registry, policy, store
         self.fresh_window_ms = fresh_window_ms
+        self.platform = platform
 
     def _fresh(self, run: RunRecord, snapshot: StateSnapshot) -> bool:
         return bool(
@@ -104,6 +107,17 @@ class CapabilityExecutor:
                 )
             if run.in_flight_action_id or run.unresolved_unknown:
                 return await self._reject(run, action, ExecutionStatus.REJECTED, "另有在途或未知动作")
+            if self.platform and not self.platform.circuit.allow(capability_id):
+                self.platform.metrics.inc("circuit_open")
+                self.platform.audit.emit(
+                    "circuit_open",
+                    tenant_id=run.tenant_id,
+                    actor=run.actor,
+                    run_id=run.run_id,
+                    result="denied",
+                    detail={"capability_id": capability_id},
+                )
+                return await self._reject(run, action, ExecutionStatus.REJECTED, "CIRCUIT_OPEN")
             decision = self.policy.decide(run, capability_id, params)
             await self.store.append_event(
                 run,
@@ -111,6 +125,16 @@ class CapabilityExecutor:
                 {"action_id": action.action_id, "decision": decision.decision.value, "message": decision.message},
             )
             if decision.decision == PolicyDecision.DENY:
+                if self.platform:
+                    self.platform.metrics.inc("writes_denied")
+                    self.platform.audit.emit(
+                        "policy_deny",
+                        tenant_id=run.tenant_id,
+                        actor=run.actor,
+                        run_id=run.run_id,
+                        result="denied",
+                        detail={"capability_id": capability_id, "code": decision.code},
+                    )
                 return await self._reject(
                     run, action, ExecutionStatus.REJECTED, decision.message or decision.code or "DENIED"
                 )
@@ -201,7 +225,17 @@ class CapabilityExecutor:
                 "ACTION_SETTLED",
                 {"action_id": action.action_id, "execution_status": action.execution_status.value},
             )
+            self._note_write_outcome(capability_id, action.execution_status)
         return action
+
+    def _note_write_outcome(self, capability_id: str, status: ExecutionStatus) -> None:
+        if self.platform is None:
+            return
+        if status == ExecutionStatus.APPLIED:
+            self.platform.circuit.record_success(capability_id)
+        elif status in {ExecutionStatus.NOT_APPLIED, ExecutionStatus.UNKNOWN}:
+            if self.platform.circuit.record_failure(capability_id):
+                self.platform.metrics.inc("circuit_open")
 
     async def _reject(self, run: RunRecord, action: ToolAction, status: ExecutionStatus, reason: str) -> ToolAction:
         action.execution_status, action.message, action.finished_at = status, reason, now()

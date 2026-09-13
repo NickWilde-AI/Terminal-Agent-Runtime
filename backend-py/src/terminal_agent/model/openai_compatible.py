@@ -10,7 +10,15 @@ from typing import Any, cast
 
 import httpx
 
-from terminal_agent.agent.contracts import CompiledTaskCandidate, PlanDraft, ReviewResult, TaskSpec
+from terminal_agent.agent.contracts import (
+    AuditResult,
+    CompiledTaskCandidate,
+    GoalResult,
+    OverallOutcome,
+    PlanDraft,
+    ReviewResult,
+    TaskSpec,
+)
 from terminal_agent.capability.core import CapabilityRegistry
 from terminal_agent.domain.models import AgentRole, ReviewDecision, StateSnapshot
 from terminal_agent.model.normalizer import ModelOutputNormalizer
@@ -277,6 +285,65 @@ class OpenAiCompatibleModelAdapter:
             from terminal_agent.agent.multi_agent import MultiAgentSupport
             result = MultiAgentSupport.review(task_spec, draft, self.model_router.active_model_id())
             result.run_id = run_id
+            result.raw["parse_fallback"] = str(exc)
+            return result
+
+    async def audit_execution(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        draft: PlanDraft | None,
+        evidence: list[dict[str, Any]],
+        observation: StateSnapshot,
+        goal_results: list[GoalResult],
+        overall_outcome: OverallOutcome,
+    ) -> AuditResult:
+        self._ensure_configured()
+        key = self._session_key(run_id, AgentRole.REVIEWER)
+        session = self.sessions.setdefault(key, _Session(role=AgentRole.REVIEWER))
+        if not session.messages:
+            session.messages.append({
+                "role": "system",
+                "content": (
+                    "你是 REVIEWER（审核 Agent，执行后证据核验）。只输出 JSON："
+                    "evidence_gaps,explanation,replan_required,replan_reason,final_reply_draft。"
+                    "禁止输出或改写 goal_results / overall_outcome。禁止建议写设备。"
+                    "UNKNOWN 不能当失败或成功。COMPLETED 时 replan_required 必须为 false。"
+                ),
+            })
+        payload = {
+            "task_spec": task_spec.model_dump(mode="json"),
+            "plan_draft": draft.model_dump(mode="json") if draft else None,
+            "evidence": evidence,
+            "observation": observation.state,
+            "goal_results": [item.model_dump(mode="json") for item in goal_results],
+            "overall_outcome": overall_outcome.value,
+            "readonly_note": "goal_results 与 overall_outcome 只读，由 Verifier 与 Outcome Aggregator 计算",
+        }
+        session.messages.append({"role": "user", "content": "请解释验收结果：\n" + self._json(payload)})
+        response = await self._chat(session.messages)
+        content = response.get("content") or ""
+        session.messages.append({"role": "assistant", "content": content})
+        try:
+            node = json.loads(self._extract_json(content))
+            return AuditResult(
+                run_id=run_id,
+                goal_version=task_spec.goal_version,
+                model_id=self.model_router.active_model_id(),
+                evidence_gaps=list(node.get("evidence_gaps") or []),
+                explanation=str(node.get("explanation") or ""),
+                replan_required=bool(node.get("replan_required")),
+                replan_reason=node.get("replan_reason"),
+                final_reply_draft=node.get("final_reply_draft"),
+                raw={"api_raw": content, "agent_role": "REVIEWER"},
+            )
+        except Exception as exc:
+            from terminal_agent.runtime.auditor import deterministic_audit
+
+            result = deterministic_audit(goal_results, overall_outcome)
+            result.run_id = run_id
+            result.goal_version = task_spec.goal_version
+            result.model_id = self.model_router.active_model_id()
             result.raw["parse_fallback"] = str(exc)
             return result
 

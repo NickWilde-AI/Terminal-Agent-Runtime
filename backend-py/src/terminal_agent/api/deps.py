@@ -16,6 +16,7 @@ from terminal_agent.memory.write_gate import MemoryWriteGate
 from terminal_agent.model.fake import FakeModelAdapter
 from terminal_agent.model.openai_compatible import OpenAiCompatibleModelAdapter
 from terminal_agent.model.router import ModelRouter as SettingsModelRouter
+from terminal_agent.orchestration.platform import PlatformServices
 from terminal_agent.persistence.sqlite import SqlitePersistence
 from terminal_agent.persistence.store import InMemoryRunStore
 from terminal_agent.policy.engine import PolicyEngine
@@ -43,6 +44,7 @@ class AppState:
     settings_model_router: SettingsModelRouter
     harness: HarnessService
     baseline: BaselineRunner
+    platform: PlatformServices | None = None
     eval_runner: Any | None = None
     sse_hub: Any | None = field(default=None, repr=False)
 
@@ -94,9 +96,15 @@ def build_app_state(settings: Settings | None = None) -> AppState:
     registry = CapabilityRegistry()
     simulator = DeviceSimulator(registry)
     store = InMemoryRunStore(settings.event_log_dir)
-    policy = PolicyEngine(registry, settings.require_confirmation)
+    platform = PlatformServices.from_settings(settings)
+    policy = PolicyEngine(registry, settings.require_confirmation, platform.rules)
     executor = CapabilityExecutor(
-        simulator, registry, policy, store, fresh_window_ms=settings.fresh_window_ms
+        simulator,
+        registry,
+        policy,
+        store,
+        fresh_window_ms=settings.fresh_window_ms,
+        platform=platform,
     )
     verifier = Verifier(simulator)
     persistence = SqlitePersistence(
@@ -127,6 +135,7 @@ def build_app_state(settings: Settings | None = None) -> AppState:
         runtime_settings,
         memory=memory,
         router=model_router,
+        platform=platform,
     )
     baseline = BaselineRunner(
         store, simulator, model, binder, executor, verifier, persistence, runtime_settings
@@ -165,6 +174,7 @@ def build_app_state(settings: Settings | None = None) -> AppState:
         settings_model_router=settings_model_router,
         harness=harness,
         baseline=baseline,
+        platform=platform,
         eval_runner=eval_runner,
     )
 

@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from terminal_agent.agent.contracts import CompiledTaskCandidate, PlanDraft, ReviewResult, TaskSpec
+from terminal_agent.agent.contracts import (
+    AuditResult,
+    CompiledTaskCandidate,
+    GoalResult,
+    OverallOutcome,
+    PlanDraft,
+    ReviewResult,
+    TaskSpec,
+)
 from terminal_agent.domain.models import AgentRole, StateSnapshot
 from terminal_agent.model.normalizer import ModelOutputNormalizer
 
@@ -52,6 +60,27 @@ class FakeModelAdapter:
         result = MultiAgentSupport.review(task_spec, draft, "fake")
         result.run_id = run_id
         result.raw["agent_role"] = "REVIEWER"
+        return result
+
+    async def audit_execution(
+        self,
+        run_id: str,
+        task_spec: TaskSpec,
+        draft: PlanDraft | None,
+        evidence: list[dict[str, Any]],
+        observation: StateSnapshot,
+        goal_results: list[GoalResult],
+        overall_outcome: OverallOutcome,
+    ) -> AuditResult:
+        from terminal_agent.runtime.auditor import deterministic_audit
+
+        result = deterministic_audit(goal_results, overall_outcome)
+        result.run_id = run_id
+        result.goal_version = task_spec.goal_version
+        result.model_id = "fake"
+        result.raw.update(agent_role="REVIEWER", observation_revision=observation.revision, evidence=len(evidence))
+        if draft is not None:
+            result.raw["plan_actions"] = len(draft.actions)
         return result
 
     async def plan_next(

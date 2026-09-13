@@ -32,16 +32,21 @@ class MemoryService:
     def retriever(self) -> MemoryRetriever:
         return self._retriever
 
-    def list(self, session_id: str | None) -> builtins.list[MemoryEntry]:
-        return self.store.list_active(session_id)
+    def list(self, session_id: str | None, tenant_id: str | None = None) -> builtins.list[MemoryEntry]:
+        return self.store.list_active(session_id, tenant_id)
 
     def try_write_from_utterance(
-        self, utterance: str | None, session_id: str | None, source_run_id: str | None
+        self,
+        utterance: str | None,
+        session_id: str | None,
+        source_run_id: str | None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         result = self.write_gate.try_extract_explicit(utterance, session_id, source_run_id)
         out: dict[str, Any] = {"accepted": result.accepted, "reason": result.reason}
         if not result.accepted or result.candidate is None:
             return out
+        result.candidate.tenant_id = tenant_id or "local"
         saved = self.store.save(result.candidate)
         out["memory"] = saved.to_map()
         return out
@@ -60,6 +65,8 @@ class MemoryService:
             out["accepted"] = False
             out["reason"] = "unsupported_key"
             return out
+        if not entry.tenant_id:
+            entry.tenant_id = "local"
         saved = self.store.save(entry)
         out["accepted"] = True
         out["reason"] = "manual"
@@ -85,9 +92,9 @@ class MemoryService:
     # --- Harness NullMemory-compatible adapters ---
 
     async def compile_hints(
-        self, session_id: str, text: str, snapshot: StateSnapshot
+        self, session_id: str, text: str, snapshot: StateSnapshot, tenant_id: str | None = None
     ) -> builtins.list[dict[str, Any]]:
-        ctx = self._context_builder.build_for_compile(session_id, text, snapshot)
+        ctx = self._context_builder.build_for_compile(session_id, text, snapshot, tenant_id)
         return ctx.hints
 
     async def plan_hints(
@@ -98,8 +105,9 @@ class MemoryService:
         constraints: builtins.list[dict[str, Any]],
         snapshot: StateSnapshot,
         prior: builtins.list[dict[str, Any]],
+        tenant_id: str | None = None,
     ) -> builtins.list[dict[str, Any]]:
         ctx = self._context_builder.build(
-            session_id, text, goals, constraints, [], snapshot, prior
+            session_id, text, goals, constraints, [], snapshot, prior, tenant_id
         )
         return ctx.hints

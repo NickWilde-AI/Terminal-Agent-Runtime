@@ -12,7 +12,7 @@
 本仓库是 **Agent 执行运行时**，不是聊天机器人、不是模型训练、不是语音底座。
 
 - MUST 把自然语言目标编译为可执行契约（目标 / 约束 / 完成条件），再进入观察 → 规划 → 策略 → 动作 → 回读。
-- MUST 保持分工：模型只提候选；Harness / Policy / Verifier 做校验、授权、分发与终态判定。
+- MUST 保持分工：模型只提候选；Harness / Policy / Preflight / Verifier / Outcome Aggregator 做校验、授权、分发与终态判定。
 - MUST NOT 用一次 Function Calling 或一段模型自我总结代替任务完成。
 - 明确单目标走 FAST（主 Agent 单次理解 / `DIRECT_ACTION`，跳过规划与审核）；跨域或带约束走 MULTI_AGENT；信息不足 CLARIFY；越权或无能力 REJECT。
 - FAST MUST NOT 被写成「完全免大模型调用」。
@@ -44,7 +44,7 @@
 
 - Policy / 权限 / 确认门禁 MUST 是确定性代码，MUST NOT 交给模型临场发挥。
 - 模型 MUST 只能选择已注册 Capability；未知工具或非法参数 MUST NOT 执行。
-- 写设备 MUST 只经 Runtime / Policy；终态 MUST 只由 Verifier 判定。
+- 写设备 MUST 只经 Runtime / Policy；单目标结果 MUST 只由 Verifier 工具计算；总体结果 MUST 只由 Outcome Aggregator 计算；审核 Agent MUST NOT 改写这两级结果。
 - 受控长期记忆可以提供默认值与建议，MUST NOT 越过 Policy、确认门禁或用户显式约束。
 - 敏感信息（隐私、支付等）默认 MUST NOT 入长期记忆，或必须脱敏；每条记忆 MUST 可溯源、可查看、可删除。
 - 用户取消 / 改目标 MUST 立即阻止旧计划新分发；迟到的旧结果 MUST NOT 覆盖新 `goal_version` 或重新打开终态。
@@ -67,7 +67,7 @@
 
 - 模型经统一 `ModelPort` 接入；默认 OpenAI 兼容接口可切换，Runtime 契约 MUST 保持不变。
 - `DEVICE_AGENT_MODEL_MODE=fake` 仅用于可复现测试与无密钥演示。真实 API 不可用、JSON/Schema 解析失败时 MUST NOT 降级 Fake 后仍计为 `openai_compatible` 成功。
-- 主 Agent 任务编译解析失败 MUST NOT 降级 Fake；Planner / Reviewer 解析失败可记 `parse_fallback` 并做确定性兜底。
+- 主 Agent 任务编译解析失败 MUST NOT 降级 Fake；Planner / Auditor 解析失败可记 `parse_fallback` 并做确定性兜底。
 - `edge` placement 当前返回 `EDGE_UNAVAILABLE` 时，MUST NOT 把「离线端侧 Agent」写成已实现。
 - 模拟器状态、故障注入、网页回放是仿真证据。MUST NOT 宣称实车温度、真实听感、车端协议、生产 SLA 或量产能力已验证。
 - MUST NOT 把未实现能力（生产级 MCP Gateway、向量库记忆、真实设备 SDK、真实外卖、地图算法引擎、端侧完整 Agent）写成已完成。
